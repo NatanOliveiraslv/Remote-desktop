@@ -1,5 +1,7 @@
 package com.br.remote_server.models;
 
+import com.br.remote_server.dtos.computers.ComputerRequestDTO;
+
 //PK id : UUID
 //name : VARCHAR
 //operatingSystem : VARCHAR
@@ -11,6 +13,7 @@ package com.br.remote_server.models;
 
 import com.br.remote_server.enums.Provider;
 import jakarta.persistence.*;
+import jakarta.validation.Valid;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
@@ -44,7 +47,6 @@ public class Computer {
     private String agentVersion;
 
     @Column(name = "last_seen_at")
-    @CreatedDate
     private Instant lastSeenAt;
 
     @ManyToOne
@@ -58,5 +60,12 @@ public class Computer {
     @Column(name = "updated_at")
     @LastModifiedDate
     private Instant updatedAt;
+
+
+    public Computer(ComputerRequestDTO requestDTO) {
+        this.nameComputer = requestDTO.nameComputer();
+        this.operatingSystem = requestDTO.operatingSystem();
+        this.agentVersion = requestDTO.agentVersion();
+    }
 
 }

@@ -1,5 +1,6 @@
 package com.br.remote_server.models;
 
+import com.br.remote_server.dtos.users.UserRequestDTO;
 import com.br.remote_server.enums.Provider;
 import jakarta.persistence.*;
 import lombok.*;
@@ -26,7 +27,7 @@ public class User {
     private UUID id = UUID.randomUUID();
 
     @Column(nullable = false, unique = true)
-    private String username;
+    private String email;
 
     @Column(nullable = false)
     private String password;
@@ -40,7 +41,7 @@ public class User {
     @Column(nullable = false)
     private Provider authProvider;
 
-    @Column(nullable = false, unique = true)
+    @Column(unique = true)
     private String providerUserId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -51,5 +52,11 @@ public class User {
     @LastModifiedDate
     private Instant updatedAt;
 
-
+    public User(UserRequestDTO requestDTO) {
+        this.email = requestDTO.email();
+        this.password = requestDTO.password();
+        this.firstName = requestDTO.firstName();
+        this.lastName = requestDTO.lastName();
+        this.authProvider = Provider.LOCATION;
+    }
 }

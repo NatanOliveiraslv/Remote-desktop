@@ -7,5 +7,5 @@ import org.springframework.stereotype.Repository;
 import java.util.UUID;
 
 @Repository
-public interface CopmuterRepository extends JpaRepository<Computer, UUID> {
+public interface ComputerRepository extends JpaRepository<Computer, UUID> {
 }

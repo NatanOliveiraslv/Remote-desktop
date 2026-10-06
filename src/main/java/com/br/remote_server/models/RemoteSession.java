@@ -33,6 +33,7 @@ public class RemoteSession {
     @JoinColumn(name = "computer_id")
     private Computer computer;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status_session", nullable = false)
     private Status statusSession;
 
