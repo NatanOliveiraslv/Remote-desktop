@@ -1,10 +1,10 @@
 package com.br.remote_server.websocket.registry;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 
@@ -27,6 +27,10 @@ public class ComputerConnectionRegistry {
 
         public boolean isOnline(UUID computerId) {
             return connections.containsKey(computerId);
+        }
+
+        public Set<UUID> getOnlineComputers() {
+            return connections.keySet();
         }
 
 }

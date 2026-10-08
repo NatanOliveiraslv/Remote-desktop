@@ -12,6 +12,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import com.br.remote_server.websocket.registry.ComputerConnectionRegistry;
 import com.br.remote_server.dtos.websocket.AgentRegisterMessage;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
@@ -33,7 +34,11 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws IOException {
         
         try{
-        AgentRegisterMessage registerMessage = objectMapper.readValue(message.getPayload(), AgentRegisterMessage.class);
+            
+            AgentRegisterMessage registerMessage = objectMapper.readValue(message.getPayload(), AgentRegisterMessage.class);
+            JsonNode json = objectMapper.readTree(message.getPayload());
+
+            String type = json.get("type").asText();
 
         if("AGENT_REGISTER".equals(registerMessage.type())) {
             UUID computerId = registerMessage.computerId();
@@ -42,6 +47,10 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
             System.out.println("Computer registered: " + computerId + " from session: " + session.getId());
 
+        }
+
+        if ("REMOTE_CONNECTION_REQUEST".equals(type)) {
+            session.sendMessage(new TextMessage("{\"type\":\"CONNECTION_ACCEPTED\"}"));
         }
 
         } catch (Exception e) {

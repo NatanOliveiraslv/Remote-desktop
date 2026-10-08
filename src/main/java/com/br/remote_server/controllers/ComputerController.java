@@ -34,9 +34,9 @@ public class ComputerController {
         return ResponseEntity.ok(responseDTO);
     }
 
-    // @GetMapping("/status/online")
-    // public ResponseEntity<?> getOnlineComputers() {
-    //     return ResponseEntity.ok(connectionRegistry.getOnlineComputers());
-    // }
+    @GetMapping("/status/online")
+    public ResponseEntity<?> getOnlineComputers() {
+        return ResponseEntity.ok(connectionRegistry.getOnlineComputers());
+    }
 
 }
