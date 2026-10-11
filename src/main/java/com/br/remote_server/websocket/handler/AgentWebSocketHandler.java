@@ -90,6 +90,13 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                         return;
                     }
 
+                    boolean activated = remoteSessionRegistry.activate(remoteSessionId);
+
+                    if(!activated) {
+                        System.err.println("Could not activate remote session: " + remoteSessionId);
+                        return;
+                    }
+
                     Map<String, Object> response = Map.of(
                         "type", "CONNECTION_ACCEPTED",
                         "remoteSessionId", remoteSessionId.toString(),
@@ -103,7 +110,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                 }
 
                 default -> {
-                    System.err.println("Unknown message type: " + type);
+                    forwardToClient(session, message, json);
                 }
             }
 
@@ -111,6 +118,35 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             System.err.println("Error processing message: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private void forwardToClient(WebSocketSession agentSession, TextMessage message, JsonNode json) throws IOException {
+        
+        String sessionIdValue = json.path("remoteSessionId").asText();
+
+        if (sessionIdValue.isBlank()) {
+            System.out.println("Message without remoteSessionId: " + message.getPayload());
+            return;
+        }
+
+        UUID remoteSessionId = UUID.fromString(sessionIdValue);
+
+        ActiveRemoteSession remoteSession = remoteSessionRegistry.get(remoteSessionId);
+
+        if (remoteSession == null
+                || !remoteSession.agentSession().getId().equals(agentSession.getId())
+                || !remoteSessionRegistry.isActive(remoteSessionId)) {
+                    
+            System.out.println("Invalid or inactive remote session: " + remoteSessionId);
+            return;
+        }
+
+        WebSocketSession clientSession  = remoteSession.clientSession();
+
+        if (clientSession.isOpen()) {
+            clientSession.sendMessage(new TextMessage(message.getPayload()));
+            return;
+        }    
     }
 
     @Override 

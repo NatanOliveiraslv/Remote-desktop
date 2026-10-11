@@ -2,6 +2,7 @@ package com.br.remote_server.websocket.registry;
 
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -13,6 +14,7 @@ public class RemoteSessionRegistry {
 
     private final Map<UUID, ActiveRemoteSession> sessions = new ConcurrentHashMap<>();
     private final Map<UUID,UUID> sessionIdByComputer = new ConcurrentHashMap<>();
+    private final Set<UUID> activeSessionIds = ConcurrentHashMap.newKeySet();
 
     public synchronized ActiveRemoteSession create(UUID computerId, WebSocketSession clientSession, WebSocketSession agentSession) {
 
@@ -38,6 +40,7 @@ public class RemoteSessionRegistry {
 
         if(remoteSession != null) {
             sessionIdByComputer.remove(remoteSession.computerId(), sessionId);
+            activeSessionIds.remove(sessionId);
         }
 
     }
@@ -60,6 +63,18 @@ public class RemoteSessionRegistry {
                 remove(remoteSession.id());
             }
         }
+    }
+
+    public synchronized boolean activate(UUID sessionId) {
+        if(!sessions.containsKey(sessionId)) {
+            return false;
+        }
+        activeSessionIds.add(sessionId);
+        return true;
+    }
+
+    public boolean isActive(UUID sessionId) {
+        return activeSessionIds.contains(sessionId);
     }
     
 }

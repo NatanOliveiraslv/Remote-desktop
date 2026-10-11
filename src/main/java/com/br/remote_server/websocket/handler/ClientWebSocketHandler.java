@@ -16,6 +16,7 @@ import com.br.remote_server.websocket.registry.ComputerConnectionRegistry;
 import com.br.remote_server.websocket.registry.RemoteSessionRegistry;
 import com.br.remote_server.dtos.websocket.ConnectComputerMessage;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
@@ -40,16 +41,68 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
         
         try{
 
-            ConnectComputerMessage connectMessage = objectMapper.readValue(message.getPayload(), ConnectComputerMessage.class);
+            JsonNode json = objectMapper.readTree(message.getPayload());
+            String type = json.path("type").asText();
 
-            if("CONNECT".equals(connectMessage.type())) {
-                connectToComputer(session, connectMessage.computerId());
+            switch (type) {
+
+                case "CONNECT" -> {
+                    ConnectComputerMessage connectMessage = objectMapper.readValue(message.getPayload(), ConnectComputerMessage.class);
+                    
+                    connectToComputer(session, connectMessage.computerId());
+                
+                }
+
+                default -> {
+                    forwardToAgent(session, json);
+                }
             }
 
         } catch (Exception e){
-            System.err.println("Error processing message: " + e.getMessage());
+            System.err.println("Error processing Client message: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private void forwardToAgent(WebSocketSession clientSession, JsonNode json) throws IOException {
+        
+        String sessionIdValue = json.path("remoteSessionId").asText();
+
+        if (sessionIdValue.isBlank()) {
+            sendJson(clientSession, Map.of(
+                "type", "ERROR",
+                "message", "Missing remoteSessionId"
+            ));
+            return;
+        }
+
+        UUID remoteSessionId = UUID.fromString(sessionIdValue);
+
+        ActiveRemoteSession remoteSession = remoteSessionRegistry.get(remoteSessionId);
+
+        if (remoteSession == null
+                || !remoteSession.clientSession().getId().equals(clientSession.getId())
+                || !remoteSessionRegistry.isActive(remoteSessionId)) {
+                    
+            sendJson(clientSession, Map.of(
+                "type", "ERROR",
+                "message", "Invalid or inactive remote session"
+            ));
+            return;
+        }
+
+        WebSocketSession agentSession = remoteSession.agentSession();
+
+        if (!agentSession.isOpen()) {
+            sendJson(clientSession, Map.of(
+                "type", "ERROR",
+                "message", "Agent disconnected"
+            ));
+            return;
+        }
+
+        agentSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(json)));
+    
     }
 
     private void connectToComputer(WebSocketSession clientSession, UUID computerId) throws IOException {
