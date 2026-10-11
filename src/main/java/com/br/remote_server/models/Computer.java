@@ -11,9 +11,7 @@ import com.br.remote_server.dtos.computers.ComputerRequestDTO;
 //updatedAt : TIMESTAMP
 //createdAt : TIMESTAMP
 
-import com.br.remote_server.enums.Provider;
 import jakarta.persistence.*;
-import jakarta.validation.Valid;
 import lombok.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;

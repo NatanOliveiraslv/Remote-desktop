@@ -21,8 +21,8 @@ public class ComputerConnectionRegistry {
             return connections.get(computerId);
         }
 
-        public void remove(UUID computerId) {
-            connections.remove(computerId);
+        public void remove(UUID computerId, WebSocketSession session) {
+            connections.remove(computerId, session);
         }
 
         public boolean isOnline(UUID computerId) {
