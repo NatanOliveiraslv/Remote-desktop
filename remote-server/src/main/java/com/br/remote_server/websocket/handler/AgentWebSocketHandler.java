@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -21,24 +22,24 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class AgentWebSocketHandler extends TextWebSocketHandler {
 
-    @Autowired 
+    @Autowired
     private ComputerConnectionRegistry connectionRegistry;
-    @Autowired 
+    @Autowired
     private ObjectMapper objectMapper;
-    @Autowired 
+    @Autowired
     private RemoteSessionRegistry remoteSessionRegistry;
 
-    @Override 
+    @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        
+
         System.out.println("WebSocket connection established: " + session.getId());
 
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws IOException {
-        
-        try{
+
+        try {
             JsonNode json = objectMapper.readTree(message.getPayload());
 
             String type = json.path("type").asText();
@@ -46,8 +47,9 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             switch (type) {
 
                 case "AGENT_REGISTER" -> {
-                    
-                    AgentRegisterMessage registerMessage = objectMapper.readValue( message.getPayload(), AgentRegisterMessage.class);
+
+                    AgentRegisterMessage registerMessage = objectMapper.readValue(message.getPayload(),
+                            AgentRegisterMessage.class);
 
                     UUID computerId = registerMessage.computerId();
 
@@ -61,9 +63,10 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
                 case "CONNECTION_ACCEPTED" -> {
 
-                    AgentConnectionAccepted connectionAccepted = objectMapper.readValue( message.getPayload(), AgentConnectionAccepted.class);
-                    
-                    if(connectionAccepted.remoteSessionId().isBlank()) {
+                    AgentConnectionAccepted connectionAccepted = objectMapper.readValue(message.getPayload(),
+                            AgentConnectionAccepted.class);
+
+                    if (connectionAccepted.remoteSessionId().isBlank()) {
                         System.err.println("Missing remoteSessionId in Agent response");
                         return;
                     }
@@ -77,7 +80,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                         return;
                     }
 
-                     // Confirma que a resposta veio do Agent esperado.
+                    // Confirma que a resposta veio do Agent esperado.
                     if (!remoteSession.agentSession().getId().equals(session.getId())) {
                         System.err.println("Agent session mismatch for remote session: " + remoteSessionId);
                         return;
@@ -85,23 +88,22 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
                     WebSocketSession clientSession = remoteSession.clientSession();
 
-                    if(!clientSession.isOpen()) {
+                    if (!clientSession.isOpen()) {
                         remoteSessionRegistry.remove(remoteSessionId);
                         return;
                     }
 
                     boolean activated = remoteSessionRegistry.activate(remoteSessionId);
 
-                    if(!activated) {
+                    if (!activated) {
                         System.err.println("Could not activate remote session: " + remoteSessionId);
                         return;
                     }
 
                     Map<String, Object> response = Map.of(
-                        "type", "CONNECTION_ACCEPTED",
-                        "remoteSessionId", remoteSessionId.toString(),
-                        "computerId", remoteSession.computerId().toString()
-                    );
+                            "type", "CONNECTION_ACCEPTED",
+                            "remoteSessionId", remoteSessionId.toString(),
+                            "computerId", remoteSession.computerId().toString());
 
                     clientSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
 
@@ -121,7 +123,7 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void forwardToClient(WebSocketSession agentSession, TextMessage message, JsonNode json) throws IOException {
-        
+
         String sessionIdValue = json.path("remoteSessionId").asText();
 
         if (sessionIdValue.isBlank()) {
@@ -136,31 +138,59 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
         if (remoteSession == null
                 || !remoteSession.agentSession().getId().equals(agentSession.getId())
                 || !remoteSessionRegistry.isActive(remoteSessionId)) {
-                    
+
             System.out.println("Invalid or inactive remote session: " + remoteSessionId);
             return;
         }
 
-        WebSocketSession clientSession  = remoteSession.clientSession();
+        WebSocketSession clientSession = remoteSession.clientSession();
 
         if (clientSession.isOpen()) {
             clientSession.sendMessage(new TextMessage(message.getPayload()));
             return;
-        }    
+        }
     }
 
-    @Override 
+    @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
 
         Object value = session.getAttributes().get("computerId");
 
-        if(value instanceof UUID computerId) {
+        if (value instanceof UUID computerId) {
             connectionRegistry.remove(computerId, session);
         }
 
         remoteSessionRegistry.removeByAgentSession(session);
-        
+
         System.out.println("Agent disconnected: " + session.getId());
     }
-    
+
+    @Override
+    protected void handleBinaryMessage(
+            WebSocketSession agentSession,
+            BinaryMessage message) {
+
+        ActiveRemoteSession remoteSession = remoteSessionRegistry.getActiveByAgentSession(agentSession);
+
+        if (remoteSession == null) {
+            System.out.println("Ignoring screen frame: no active session for this Agent.");
+            return;
+        }
+
+        WebSocketSession clientSession = remoteSession.clientSession();
+        if (clientSession == null || !clientSession.isOpen()) {
+            System.out.println("Ignoring screen frame: Client is disconnected.");
+            return;
+        }
+
+        // Reuse a read-only view of the incoming JPEG payload.
+        try {
+            clientSession.sendMessage(
+                    new BinaryMessage(message.getPayload().asReadOnlyBuffer()));
+        } catch (IOException e) {
+            System.err.println("Error forwarding screen frame to Client: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
 }
