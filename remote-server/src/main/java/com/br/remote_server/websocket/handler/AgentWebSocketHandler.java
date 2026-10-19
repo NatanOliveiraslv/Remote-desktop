@@ -100,10 +100,20 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                         return;
                     }
 
+                    int screenWidth = json.path("screenWidth").asInt(0);
+                    int screenHeight = json.path("screenHeight").asInt(0);
+
+                    if (screenWidth <= 0 || screenHeight <= 0) {
+                        System.out.println("Invalid remote screen dimensions");
+                        return;
+                    }
+
                     Map<String, Object> response = Map.of(
                             "type", "CONNECTION_ACCEPTED",
-                            "remoteSessionId", remoteSessionId.toString(),
-                            "computerId", remoteSession.computerId().toString());
+                            "remoteSessionId", remoteSession.id().toString(),
+                            "computerId", remoteSession.computerId().toString(),
+                            "screenWidth", screenWidth,
+                            "screenHeight", screenHeight);
 
                     clientSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(response)));
 

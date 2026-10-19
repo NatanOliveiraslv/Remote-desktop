@@ -13,6 +13,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.awt.Toolkit;
+import java.awt.Dimension;
 
 import com.br.remote_agent.control.RemoteDesktopController;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,8 +33,8 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RemoteDesktopController desktopController;
     private final StringBuilder incomingText = new StringBuilder();
-    private final ScheduledExecutorService screenCaptureExecutor =
-            Executors.newSingleThreadScheduledExecutor(runnable -> {
+    private final ScheduledExecutorService screenCaptureExecutor = Executors
+            .newSingleThreadScheduledExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "remote-agent-screen-capture");
                 thread.setDaemon(true);
                 return thread;
@@ -74,8 +76,7 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
 
         sendJson(Map.of(
                 "type", "AGENT_REGISTER",
-                "computerId", computerId.toString()
-        ));
+                "computerId", computerId.toString()));
 
         socket.request(1);
     }
@@ -132,13 +133,18 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
             return;
         }
 
-        // MVP only: accepts automatically. Explicit permission should be added before real use.
+        // MVP only: accepts automatically. Explicit permission should be added before
+        // real use.
         stopScreenCapture();
         activeRemoteSessionId = requestedSessionId;
+        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+
         sendJson(Map.of(
                 "type", "CONNECTION_ACCEPTED",
-                "remoteSessionId", requestedSessionId.toString()
-        ));
+                "remoteSessionId", requestedSessionId.toString(),
+                "screenWidth", screenSize.width,
+                "screenHeight", screenSize.height));
+        System.out.println(screenSize.width + "x" + screenSize.height + " screen size sent to server.");
         startScreenCapture();
         System.out.println("Accepted remote session request: " + requestedSessionId);
     }
@@ -182,8 +188,7 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
                 this::captureAndSendScreen,
                 SCREEN_FRAME_INTERVAL_MS,
                 SCREEN_FRAME_INTERVAL_MS,
-                TimeUnit.MILLISECONDS
-        );
+                TimeUnit.MILLISECONDS);
         System.out.println("Screen capture started at approximately 1 FPS.");
     }
 
@@ -205,16 +210,14 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
         try {
             byte[] jpeg = desktopController.captureScreenJpeg(
                     MAX_SCREEN_WIDTH,
-                    JPEG_QUALITY
-            );
+                    JPEG_QUALITY);
 
             // Screen frames are binary JPEG WebSocket messages, not Base64 JSON.
             socket.sendBinary(ByteBuffer.wrap(jpeg), true).join();
             System.out.printf(
                     "Screen frame sent: %d bytes, session=%s%n",
                     jpeg.length,
-                    sessionId
-            );
+                    sessionId);
         } catch (Exception e) {
             System.err.println("Could not capture/send screen frame: " + e.getMessage());
         }
