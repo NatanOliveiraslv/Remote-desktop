@@ -130,7 +130,7 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
             // Primeiro, avisa o Client que a solicitação está em andamento
             sendJson(clientSession, Map.of(
                 "type", "CONNECTING",
-                "sessionId", remoteSession.id().toString()
+                "remoteSessionId", remoteSession.id().toString()
             ));
 
             // Depois, encaminha o pedido ao Agent.

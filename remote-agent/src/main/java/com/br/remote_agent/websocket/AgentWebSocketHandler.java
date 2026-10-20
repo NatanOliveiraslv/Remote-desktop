@@ -110,6 +110,8 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
                 case "REMOTE_CONNECTION_REQUEST" -> handleRemoteConnectionRequest(json);
                 case "MOUSE_MOVE" -> handleMouseMove(json);
                 case "REMOTE_SESSION_CLOSED" -> handleRemoteSessionClosed(json);
+                case "MOUSE_BUTTON_DOWN" -> handleMouseButtonDown(json);
+                case "MOUSE_BUTTON_UP" -> handleMouseButtonUp(json);
                 default -> System.out.println("No handler for message type: " + type);
             }
         } catch (Exception e) {
@@ -165,6 +167,49 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
         desktopController.moveMouse(xNode.intValue(), yNode.intValue());
     }
 
+    private void handleMouseButtonDown(JsonNode json) {
+        if (!isActiveSession(json)) {
+            return;
+        }
+
+        String button = json.path("button").asText();
+
+        JsonNode xNode = json.path("x");
+        JsonNode yNode = json.path("y");
+
+        if (!xNode.isIntegralNumber()
+                || !yNode.isIntegralNumber()) {
+            return;
+        }
+
+        int x = xNode.intValue();
+        int y = yNode.intValue();
+
+        desktopController.moveMouse(x, y);
+        desktopController.pressMouse(button);
+    }
+
+    private void handleMouseButtonUp(JsonNode json) {
+        if (!isActiveSession(json)) {
+            return;
+        }
+
+        String button = json.path("button").asText();
+
+        JsonNode xNode = json.path("x");
+        JsonNode yNode = json.path("y");
+
+        if (xNode.isIntegralNumber()
+                && yNode.isIntegralNumber()) {
+
+            desktopController.moveMouse(
+                    xNode.intValue(),
+                    yNode.intValue());
+        }
+
+        desktopController.releaseMouse(button);
+    }
+
     private void handleRemoteSessionClosed(JsonNode json) {
         String id = json.path("remoteSessionId").asText();
         if (activeRemoteSessionId != null && activeRemoteSessionId.toString().equals(id)) {
@@ -172,6 +217,13 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
             stopScreenCapture();
             System.out.println("Remote session ended: " + id);
         }
+    }
+
+    private boolean isActiveSession(JsonNode json) {
+        String id = json.path("remoteSessionId").asText();
+
+        return activeRemoteSessionId != null
+                && activeRemoteSessionId.toString().equals(id);
     }
 
     private boolean isMessageForActiveSession(JsonNode json) {
