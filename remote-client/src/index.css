@@ -1,3 +1,29 @@
+:root {
+  --bg: #0f1215;
+  --surface: #171b20;
+  --surface-2: #1e242b;
+  --border: #2a323b;
+  --border-strong: #3a444f;
+  --text: #e8ecf0;
+  --muted: #9aa6b2;
+  --accent: #5aa9ff;
+  --accent-hover: #7bbbff;
+  --on-accent: #0b1015;
+  --online: #3ddc97;
+  --danger: #ff8a80;
+  --on-danger: #2a0a08;
+
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
 
 html {
   min-width: 320px;
@@ -12,4 +38,8 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+button {
+  font: inherit;
 }

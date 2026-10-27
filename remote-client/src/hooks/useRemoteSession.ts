@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 
 export type ConnectionStatus =
   | "disconnected"
@@ -15,27 +16,37 @@ type ServerMessage = {
   screenHeight?: number;
 };
 
+// Mensagens de erro do servidor, traduzidas para exibir ao usuário.
+const SERVER_ERRORS: Record<string, string> = {
+  "Computer offline": "O computador está offline.",
+  "Computer already has an active session":
+    "Este computador já está em uso em outra sessão.",
+  "Agent disconnected": "O Agent do computador foi desconectado.",
+  "Invalid or inactive remote session": "A sessão remota não está mais ativa.",
+  "Failed to initiate remote session":
+    "Não foi possível iniciar a sessão remota.",
+};
+
+function translateServerError(message?: string): string {
+  if (!message) return "Não foi possível conectar ao computador.";
+  return SERVER_ERRORS[message] ?? message;
+}
+
 export interface RemoteSessionState {
-  computerId: string;
-  setComputerId: (id: string) => void;
   status: ConnectionStatus;
   statusMessage: string;
   remoteSessionId: string | null;
   screenImageUrl: string | null;
   remoteScreenWidth: number | null;
   remoteScreenHeight: number | null;
-  framesReceived: number;
-  socketRef: React.MutableRefObject<WebSocket | null>;
-  connect: () => void;
+  socketRef: RefObject<WebSocket | null>;
+  connect: (computerId: string) => void;
   disconnect: () => void;
 }
 
 export function useRemoteSession(): RemoteSessionState {
-  const [computerId, setComputerId] = useState("");
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
-  const [statusMessage, setStatusMessage] = useState(
-    "Informe o identificador do computador."
-  );
+  const [statusMessage, setStatusMessage] = useState("");
   const [remoteSessionId, setRemoteSessionId] = useState<string | null>(null);
   const [screenImageUrl, setScreenImageUrl] = useState<string | null>(null);
   const [remoteScreenWidth, setRemoteScreenWidth] = useState<number | null>(
@@ -44,60 +55,66 @@ export function useRemoteSession(): RemoteSessionState {
   const [remoteScreenHeight, setRemoteScreenHeight] = useState<number | null>(
     null
   );
-  const [framesReceived, setFramesReceived] = useState(0);
 
   const imageUrlRef = useRef<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
-  function connect() {
+  // Fecha o socket atual. Zerar a ref antes faz os handlers antigos
+  // (onclose/onmessage) ignorarem eventos de um socket descartado.
+  function closeSocket(reason: string) {
+    const socket = socketRef.current;
+    socketRef.current = null;
+
+    if (socket && socket.readyState < WebSocket.CLOSING) {
+      socket.close(1000, reason);
+    }
+  }
+
+  // Libera o último frame e limpa os dados da sessão anterior.
+  function resetSession() {
+    if (imageUrlRef.current) {
+      URL.revokeObjectURL(imageUrlRef.current);
+      imageUrlRef.current = null;
+    }
+
+    setScreenImageUrl(null);
+    setRemoteSessionId(null);
+    setRemoteScreenWidth(null);
+    setRemoteScreenHeight(null);
+  }
+
+  function connect(computerId: string) {
     const id = computerId.trim();
 
     if (!id) {
       setStatus("error");
-      setStatusMessage("Informe o identificador do computador.");
+      setStatusMessage("Computador inválido.");
       return;
     }
 
     // Evita manter uma conexão anterior aberta.
-    const previousSocket = socketRef.current;
-
-    if (previousSocket) {
-      socketRef.current = null;
-
-      if (previousSocket.readyState < WebSocket.CLOSING) {
-        previousSocket.close();
-      }
-    }
+    closeSocket("Starting a new connection");
+    resetSession();
 
     setStatus("connecting");
     setStatusMessage("Conectando ao servidor...");
-    setRemoteSessionId(null);
 
     // A conexão usa a origem atual; o Vite encaminha ao Spring Boot.
-    const protocol =
-      window.location.protocol === "https:" ? "wss:" : "ws:";
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
     const socket = new WebSocket(
       `${protocol}//${window.location.host}/api/v1/ws/client`
     );
 
     socket.binaryType = "arraybuffer";
-
     socketRef.current = socket;
-
-    let connectionFailed = false;
 
     socket.onopen = () => {
       if (socketRef.current !== socket) return;
 
       setStatusMessage("Servidor conectado. Solicitando acesso...");
 
-      socket.send(
-        JSON.stringify({
-          type: "CONNECT",
-          computerId: id,
-        })
-      );
+      socket.send(JSON.stringify({ type: "CONNECT", computerId: id }));
     };
 
     socket.onmessage = (event: MessageEvent) => {
@@ -118,9 +135,7 @@ export function useRemoteSession(): RemoteSessionState {
         }
 
         imageUrlRef.current = imageUrl;
-
         setScreenImageUrl(imageUrl);
-        setFramesReceived((previous) => previous + 1);
 
         return;
       }
@@ -166,10 +181,11 @@ export function useRemoteSession(): RemoteSessionState {
           break;
 
         case "ERROR":
+          // Todo erro do servidor inutiliza a sessão: encerra a conexão.
+          closeSocket("Server error");
+          resetSession();
           setStatus("error");
-          setStatusMessage(
-            data.message ?? "Não foi possível conectar ao computador."
-          );
+          setStatusMessage(translateServerError(data.message));
           break;
 
         default:
@@ -180,10 +196,11 @@ export function useRemoteSession(): RemoteSessionState {
     socket.onerror = () => {
       if (socketRef.current !== socket) return;
 
-      connectionFailed = true;
+      closeSocket("Socket error");
+      resetSession();
       setStatus("error");
       setStatusMessage(
-        "Falha no WebSocket. Verifique o servidor e o console do navegador."
+        "Não foi possível conectar ao servidor. Verifique se ele está em execução."
       );
     };
 
@@ -191,37 +208,21 @@ export function useRemoteSession(): RemoteSessionState {
       if (socketRef.current !== socket) return;
 
       socketRef.current = null;
-
-      if (!connectionFailed) {
-        setStatus("disconnected");
-        setStatusMessage(
-          event.wasClean
-            ? "Conexão encerrada."
-            : "Conexão interrompida pelo servidor."
-        );
-      }
+      resetSession();
+      setStatus("disconnected");
+      setStatusMessage(
+        event.wasClean
+          ? "Conexão encerrada."
+          : "Conexão interrompida pelo servidor."
+      );
     };
   }
 
   function disconnect() {
-    const socket = socketRef.current;
-    socketRef.current = null;
-
-    if (socket && socket.readyState < WebSocket.CLOSING) {
-      socket.close(1000, "Client disconnected");
-    }
-
+    closeSocket("Client disconnected");
+    resetSession();
     setStatus("disconnected");
-    setStatusMessage("Conexão encerrada pelo usuário.");
-    setRemoteSessionId(null);
-
-    if (imageUrlRef.current) {
-      URL.revokeObjectURL(imageUrlRef.current);
-      imageUrlRef.current = null;
-    }
-
-    setScreenImageUrl(null);
-    setFramesReceived(0);
+    setStatusMessage("");
   }
 
   useEffect(() => {
@@ -237,25 +238,18 @@ export function useRemoteSession(): RemoteSessionState {
         URL.revokeObjectURL(imageUrlRef.current);
         imageUrlRef.current = null;
       }
-
-      setScreenImageUrl(null);
-      setFramesReceived(0);
     };
   }, []);
 
   return {
-    computerId,
-    setComputerId,
     status,
     statusMessage,
     remoteSessionId,
     screenImageUrl,
     remoteScreenWidth,
     remoteScreenHeight,
-    framesReceived,
     socketRef,
     connect,
     disconnect,
   };
 }
-

@@ -8,14 +8,16 @@ public record ComputerResponseDTO (
     UUID id,
     String nameComputer,
     String operatingSystem, 
-    String agentVersion
+    String agentVersion,
+    boolean online
 ){
-    public ComputerResponseDTO(Computer computer) {
+    public ComputerResponseDTO(Computer computer, boolean online) {
         this(
             computer.getId(),
             computer.getNameComputer(),
             computer.getOperatingSystem(),
-            computer.getAgentVersion()
+            computer.getAgentVersion(),
+            online
         );
     }
 }

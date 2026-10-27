@@ -1,75 +1,32 @@
-# React + TypeScript + Vite
+# remote-client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Front-end (React + TypeScript + Vite) do sistema de acesso remoto.
 
-Currently, two official plugins are available:
+## Como rodar
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+O app abre em http://localhost:5173. Em desenvolvimento, o Vite encaminha tudo que
+começa com `/api` (REST e WebSocket) para o servidor Spring Boot em
+`http://localhost:8080`, então o servidor precisa estar em execução.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Fluxo atual
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+1. A lista de computadores vem de `GET /api/v1/computers` e é atualizada a cada 5 s.
+2. Ao clicar em um computador **online**, abre uma sessão em tela cheia com o
+   carregamento e, assim que chega o primeiro frame, a tela do PC remoto.
+3. Zoom na tela remota (até 10x, conforme o tamanho da tela):
+   - **Celular:** pinça com dois dedos dá zoom e move a imagem. Um dedo continua
+     sendo o mouse (toque = clique, arrastar = arrastar).
+   - **PC:** botões − / + na barra, Ctrl + roda do mouse (ou pinça do trackpad) e
+     o botão "Mover" para arrastar a imagem ampliada. Clicar no percentual volta a 100%.
+4. Login e cadastro ainda não foram implementados.
 
-```
+## Scripts
+
+- `npm run dev`: servidor de desenvolvimento
+- `npm run build`: checagem de tipos e build de produção
+- `npm run lint`: ESLint
