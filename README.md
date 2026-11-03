@@ -32,9 +32,9 @@ O servidor intermedeia a comunicação entre o navegador e o Agent, permitindo i
 ┌────────────────────────┐       WebSocket        ┌────────────────────────┐
 │      remote-client     │ ◄────────────────────► │      remote-server     │
 │                        │                        │                        │
-│ React + TypeScript     │                        │ Spring Boot             │
-│ Navegador              │                        │ WebSocket handlers      │
-└────────────────────────┘                        │ Registries em memória    │
+│ React + TypeScript     │                        │ Spring Boot            │
+│ Navegador              │                        │ WebSocket handlers     │
+└────────────────────────┘                        │ Registries em memória  │
                                                   └────────────┬───────────┘
                                                                │ WebSocket
                                                                │
