@@ -45,6 +45,15 @@ public class RemoteSessionRegistry {
                 .orElse(null);
     }
 
+    public ActiveRemoteSession getActiveByClientSession(WebSocketSession clientSession) {
+        return sessions.values().stream()
+                .filter(remoteSession -> remoteSession.clientSession().getId()
+                        .equals(clientSession.getId()))
+                .filter(remoteSession -> isActive(remoteSession.id()))
+                .findFirst()
+                .orElse(null);
+    }
+
     public synchronized void remove(UUID sessionId) {
 
         ActiveRemoteSession remoteSession = sessions.remove(sessionId);

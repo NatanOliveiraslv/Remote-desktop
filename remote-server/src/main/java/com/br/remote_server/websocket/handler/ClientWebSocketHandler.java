@@ -64,6 +64,7 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    // Encaminha a mensagem recebida do Client para o Agent correspondente, se a sessão remota estiver ativa.
     private void forwardToAgent(WebSocketSession clientSession, JsonNode json) throws IOException {
         
         String sessionIdValue = json.path("remoteSessionId").asText();
@@ -161,9 +162,11 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override 
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws IOException {
+        
+        ActiveRemoteSession remoteSession = remoteSessionRegistry.getActiveByClientSession(session);
 
-        sendJson(agentSession, Map.of(
+        sendJson(remoteSession.agentSession(), Map.of(
                 "type", "REMOTE_CONNECTION_CLOSED",
                 "remoteSessionId", remoteSession.id().toString()
             ));

@@ -74,12 +74,12 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                     AgentConnectionAccepted connectionAccepted = objectMapper.readValue(message.getPayload(),
                             AgentConnectionAccepted.class);
 
-                    if (connectionAccepted.remoteSessionId().isBlank()) {
+                    if (connectionAccepted.remoteSessionId() == null) {
                         System.err.println("Missing remoteSessionId in Agent response");
                         return;
                     }
 
-                    UUID remoteSessionId = UUID.fromString(connectionAccepted.remoteSessionId());
+                    UUID remoteSessionId = connectionAccepted.remoteSessionId();
 
                     ActiveRemoteSession remoteSession = remoteSessionRegistry.get(remoteSessionId);
 
