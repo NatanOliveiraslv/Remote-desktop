@@ -15,6 +15,7 @@ import com.br.remote_server.dtos.websocket.AgentRegisterMessage;
 import com.br.remote_server.dtos.websocket.AgentConnectionAccepted;
 import com.br.remote_server.websocket.registry.RemoteSessionRegistry;
 import com.br.remote_server.websocket.registry.ActiveRemoteSession;
+import com.br.remote_server.services.ComputerService;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -28,6 +29,8 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     private ObjectMapper objectMapper;
     @Autowired
     private RemoteSessionRegistry remoteSessionRegistry;
+    @Autowired
+    private ComputerService computerService;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -52,6 +55,11 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                             AgentRegisterMessage.class);
 
                     UUID computerId = registerMessage.computerId();
+
+                    if (computerId == null || !computerService.existsById(computerId)) {
+                        rejectAgent(session, "Invalid credentials");
+                        return;
+                    }
 
                     connectionRegistry.register(computerId, session);
 
@@ -159,6 +167,12 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             clientSession.sendMessage(new TextMessage(message.getPayload()));
             return;
         }
+    }
+
+    private void rejectAgent(WebSocketSession session, String reason) throws IOException {
+        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(
+                Map.of("type", "ERROR", "message", reason))));
+        session.close(CloseStatus.POLICY_VIOLATION);
     }
 
     @Override

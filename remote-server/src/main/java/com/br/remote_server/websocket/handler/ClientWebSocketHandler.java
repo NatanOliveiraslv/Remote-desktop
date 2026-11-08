@@ -162,7 +162,11 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
 
     @Override 
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        
+
+        sendJson(agentSession, Map.of(
+                "type", "REMOTE_CONNECTION_CLOSED",
+                "remoteSessionId", remoteSession.id().toString()
+            ));
         remoteSessionRegistry.removeByClientSession(session);
         
         System.out.println("WebSocket connection closed: " + session.getId() + " with status: " + status);

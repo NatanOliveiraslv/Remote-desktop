@@ -21,7 +21,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity(name = "Computer")
-@Table(name = "copmuters")
+@Table(name = "computers")
 @Getter
 @Setter
 @AllArgsConstructor

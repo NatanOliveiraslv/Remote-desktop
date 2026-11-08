@@ -1,6 +1,7 @@
 package com.br.remote_server.services;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,10 @@ public class ComputerService {
                         computer.getAgentVersion(),
                         connectionRegistry.isOnline(computer.getId())))
                 .toList();
+    }
+
+    public boolean existsById(UUID id) {
+        return computerRepository.existsById(id);
     }
 
 }
