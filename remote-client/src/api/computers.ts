@@ -6,9 +6,7 @@ export interface Computer {
   online: boolean;
 }
 
-// Em desenvolvimento o Vite encaminha /api para o Spring Boot
-// (veja vite.config.ts), o que evita problemas de CORS.
-const API_BASE = "/api/v1";
+import { ApiError, apiFetch } from "./http";
 
 // Computadores online primeiro; dentro de cada grupo, ordem alfabética.
 function byStatusThenName(a: Computer, b: Computer): number {
@@ -24,13 +22,14 @@ export async function fetchComputers(
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE}/computers`, {
+    // apiFetch envia o token e o renova sozinho quando necessário.
+    response = await apiFetch("/computers", {
       signal,
       headers: { Accept: "application/json" },
     });
   } catch (error) {
-    // Requisições canceladas propagam o erro original para o chamador ignorar.
-    if (signal?.aborted) throw error;
+    // Cancelamentos e erros da API (como sessão expirada) seguem como estão.
+    if (signal?.aborted || error instanceof ApiError) throw error;
     throw new Error("Não foi possível acessar o servidor.", { cause: error });
   }
 

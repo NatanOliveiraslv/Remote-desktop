@@ -29,7 +29,7 @@ public class CustomOidcUserService extends OidcUserService {
         String nameProvider = userRequest.getClientRegistration().getRegistrationId();
         Provider provider = Provider.valueOf(nameProvider.toUpperCase());
 
-        User user = userRepository.findByUsername(email)
+        User user = userRepository.findByEmail(email)
                 .orElseGet(() -> User.builder()
                         .email(email)
                         .firstName(firstName)

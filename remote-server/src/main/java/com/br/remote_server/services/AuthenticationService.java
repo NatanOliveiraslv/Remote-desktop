@@ -19,7 +19,7 @@ public class AuthenticationService implements UserDetailsService {
     public UserDetails loadUserByUsername(final String username)
             throws UsernameNotFoundException {
 
-        return (userRepository.findByUsername(username)).map(user ->
+        return (userRepository.findByEmail(username)).map(user ->
                 User.builder()
                         .email(username)
                         .password(user.getPassword())

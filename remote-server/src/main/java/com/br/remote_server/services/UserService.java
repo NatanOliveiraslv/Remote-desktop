@@ -55,7 +55,7 @@ public class UserService {
         String accessToken = tokenService.generateToken(((User) authentication.getPrincipal()).getUsername());
 
         // Fetch user and create refresh token
-        User user = userRepository.findByUsername(data.username()).orElseThrow(() -> new UnauthorizedUser("Usário não autorizado"));
+        User user = userRepository.findByEmail(data.username()).orElseThrow(() -> new UnauthorizedUser("Usário não autorizado"));
 
         String refreshToken = tokenService.generateRefreshToken(user.getUsername());
 

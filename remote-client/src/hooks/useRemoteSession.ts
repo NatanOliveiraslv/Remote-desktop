@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { API_BASE, expireSession, getValidAccessToken } from "../api/http";
 
 export type ConnectionStatus =
   | "disconnected"
@@ -40,7 +41,7 @@ export interface RemoteSessionState {
   remoteScreenWidth: number | null;
   remoteScreenHeight: number | null;
   socketRef: RefObject<WebSocket | null>;
-  connect: (computerId: string) => void;
+  connect: (computerId: string) => Promise<void>;
   disconnect: () => void;
 }
 
@@ -58,6 +59,9 @@ export function useRemoteSession(): RemoteSessionState {
 
   const imageUrlRef = useRef<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  // Cada conexão ganha um número; se outra começar (ou o usuário cancelar)
+  // enquanto esta espera o token, ela é descartada.
+  const attemptRef = useRef(0);
 
   // Fecha o socket atual. Zerar a ref antes faz os handlers antigos
   // (onclose/onmessage) ignorarem eventos de um socket descartado.
@@ -83,7 +87,7 @@ export function useRemoteSession(): RemoteSessionState {
     setRemoteScreenHeight(null);
   }
 
-  function connect(computerId: string) {
+  async function connect(computerId: string) {
     const id = computerId.trim();
 
     if (!id) {
@@ -92,6 +96,8 @@ export function useRemoteSession(): RemoteSessionState {
       return;
     }
 
+    const attempt = ++attemptRef.current;
+
     // Evita manter uma conexão anterior aberta.
     closeSocket("Starting a new connection");
     resetSession();
@@ -99,12 +105,33 @@ export function useRemoteSession(): RemoteSessionState {
     setStatus("connecting");
     setStatusMessage("Conectando ao servidor...");
 
-    // A conexão usa a origem atual; o Vite encaminha ao Spring Boot.
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    // O navegador não envia headers no WebSocket, então o token vai na URL.
+    // Ele só é conferido no momento da conexão; por isso pedimos um token
+    // sempre válido antes de abrir.
+    let token: string | null;
 
-    const socket = new WebSocket(
-      `${protocol}//${window.location.host}/api/v1/ws/client`
-    );
+    try {
+      token = await getValidAccessToken();
+    } catch {
+      if (attempt !== attemptRef.current) return;
+
+      setStatus("error");
+      setStatusMessage("Não foi possível acessar o servidor.");
+      return;
+    }
+
+    if (attempt !== attemptRef.current) return;
+
+    if (!token) {
+      expireSession();
+      return;
+    }
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const url = new URL(`${protocol}//${window.location.host}${API_BASE}/ws/client`);
+    url.searchParams.set("access_token", token);
+
+    const socket = new WebSocket(url);
 
     socket.binaryType = "arraybuffer";
     socketRef.current = socket;
@@ -200,7 +227,7 @@ export function useRemoteSession(): RemoteSessionState {
       resetSession();
       setStatus("error");
       setStatusMessage(
-        "Não foi possível conectar ao servidor. Verifique se ele está em execução."
+        "Não foi possível abrir a conexão. Verifique se o servidor está em execução e tente novamente."
       );
     };
 
@@ -219,6 +246,7 @@ export function useRemoteSession(): RemoteSessionState {
   }
 
   function disconnect() {
+    attemptRef.current++;
     closeSocket("Client disconnected");
     resetSession();
     setStatus("disconnected");
@@ -227,6 +255,9 @@ export function useRemoteSession(): RemoteSessionState {
 
   useEffect(() => {
     return () => {
+      // Invalida uma conexão que ainda esteja esperando o token.
+      attemptRef.current = -1;
+
       const socket = socketRef.current;
       socketRef.current = null;
 

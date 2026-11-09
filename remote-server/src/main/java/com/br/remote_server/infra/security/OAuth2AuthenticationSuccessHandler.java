@@ -46,7 +46,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
             throw new IllegalStateException("Tipo de usuário não suportado: " + principal.getClass());
         }
 
-        userRepository.findByUsername(username).orElseThrow(() -> new UnauthorizedUser("Usário não autorizado"));
+        userRepository.findByEmail(username).orElseThrow(() -> new UnauthorizedUser("Usário não autorizado"));
 
         String token = tokenService.generateToken(username);
         String refreshToken = tokenService.generateRefreshToken(username);
