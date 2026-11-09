@@ -30,7 +30,8 @@ public class SecurityFilter extends OncePerRequestFilter {
     private AntPathMatcher pathMatcher = new AntPathMatcher();
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
         // Log para depuração
         System.out.println("SecurityFilter: Processando requisição para URI: " + request.getRequestURI());
 
@@ -45,7 +46,8 @@ public class SecurityFilter extends OncePerRequestFilter {
                         User user = userOptional.get();
                         var authentication = new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
                         SecurityContextHolder.getContext().setAuthentication(authentication);
-                        System.out.println("SecurityFilter: Usuário '" + subject + "' autenticado com sucesso via token.");
+                        System.out.println(
+                                "SecurityFilter: Usuário '" + subject + "' autenticado com sucesso via token.");
                     } else {
                         logger.warn("SecurityFilter: Usuário não encontrado para o assunto do token: " + subject);
                         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED); // 401
@@ -68,7 +70,8 @@ public class SecurityFilter extends OncePerRequestFilter {
                 return;
             }
         } else {
-            System.out.println("SecurityFilter: URI '" + request.getRequestURI() + "' é um endpoint público. Pulando verificação de token.");
+            System.out.println("SecurityFilter: URI '" + request.getRequestURI()
+                    + "' é um endpoint público. Pulando verificação de token.");
         }
 
         filterChain.doFilter(request, response);
@@ -83,10 +86,10 @@ public class SecurityFilter extends OncePerRequestFilter {
     }
 
     private boolean checkIfEndpointIsNotPublic(HttpServletRequest request) {
-        String requestURI = request.getRequestURI();
+        String path = request.getRequestURI().substring(request.getContextPath().length());
         for (String publicEndpoint : SecurityConfigurations.ENDPOINTS_PERMIT_ALL) {
             // Se o requestURI corresponde a um dos padrões públicos
-            if (pathMatcher.match(publicEndpoint, requestURI)) {
+            if (pathMatcher.match(publicEndpoint, path)) {
                 return false;
             }
         }

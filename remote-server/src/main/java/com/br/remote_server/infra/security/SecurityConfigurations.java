@@ -35,12 +35,12 @@ public class SecurityConfigurations {
     private String allowedOrigin;
 
     public static final String [] ENDPOINTS_PERMIT_ALL = {
-            "/api/v1/auth/sign-in",
-            "/api/v1/auth/register",
+            "/auth/sign-in",
+            "/auth/register",
             "/error",
-            "/api/v1/auth/logout",
-            "/api/v1/auth/refresh-token",
-            "/api/v1/ws/agent",
+            "/auth/logout",
+            "/auth/refresh-token",
+            "/ws/agent",
     };
 
     @Bean

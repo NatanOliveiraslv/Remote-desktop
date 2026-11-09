@@ -10,6 +10,7 @@ import com.br.remote_server.dtos.users.AuthenticationRequestDTO;
 import com.br.remote_server.dtos.users.AuthenticationResponseDTO;
 import com.br.remote_server.dtos.users.UserRequestDTO;
 import com.br.remote_server.dtos.users.UserResponseDTO;
+import com.br.remote_server.enums.Provider;
 import com.br.remote_server.exceptions.UnauthorizedUser;
 import com.br.remote_server.exceptions.UserAlreadyRegistered;
 import com.br.remote_server.infra.security.SecurityConfigurations;
@@ -33,12 +34,13 @@ public class UserService {
         if (userRepository.existsByEmail(data.email()) || userRepository.existsByEmail(data.email())) {
             throw new UserAlreadyRegistered();// Retorna erro 400 se login ou e-mail já existir
         }
-        User userEntity = User.builder().email(data.email())
-                .password(securityConfiguration.passwordEncoder().encode(data.password()))
-                .firstName(data.firstName())
-                .lastName(data.lastName())
-                .email(data.email())
-                .build();
+        User userEntity = User.builder()
+            .email(data.email())
+            .password(securityConfiguration.passwordEncoder().encode(data.password()))
+            .firstName(data.firstName())
+            .lastName(data.lastName())
+            .authProvider(Provider.LOCATION)
+            .build();
 
         return new UserResponseDTO(userRepository.save(userEntity));
     }

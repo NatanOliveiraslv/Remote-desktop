@@ -20,14 +20,15 @@ import java.util.UUID;
 @Table(name = "users")
 @Getter
 @Setter
-@Builder 
+@Builder
 @AllArgsConstructor
 @NoArgsConstructor
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @EntityListeners(AuditingEntityListener.class)
-public class User implements UserDetails{
+public class User implements UserDetails {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @EqualsAndHashCode.Include
     @Column(nullable = false, unique = true)
     private UUID id;
