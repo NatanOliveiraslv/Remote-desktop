@@ -80,8 +80,16 @@ public class SecurityFilter extends OncePerRequestFilter {
     private String getToken(HttpServletRequest request) {
         var authorizationHeader = request.getHeader("Authorization");
         if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
-            return authorizationHeader.replace("Bearer ", "");
+            return authorizationHeader.substring("Bearer ".length());
         }
+
+        // O WebSocket do navegador não consegue enviar headers, então o front
+        // manda o token na URL do handshake. Vale só para /ws/client.
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        if (path.equals("/ws/client")) {
+            return request.getParameter("access_token");
+        }
+
         return null;
     }
 
