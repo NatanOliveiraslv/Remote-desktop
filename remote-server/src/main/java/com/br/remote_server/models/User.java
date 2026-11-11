@@ -64,7 +64,7 @@ public class User implements UserDetails {
         this.password = requestDTO.password();
         this.firstName = requestDTO.firstName();
         this.lastName = requestDTO.lastName();
-        this.authProvider = Provider.LOCATION;
+        this.authProvider = Provider.LOCAL;
     }
 
     @Override

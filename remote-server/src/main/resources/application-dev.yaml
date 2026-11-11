@@ -1,0 +1,53 @@
+app:
+  env: ${APP_ENV:dev} # dev, prod
+spring:
+  application:
+    name: remote-server
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driverClassName: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    hibernate:
+      ddl-auto: update
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - openid
+              - profile
+              - email
+  server:
+    error:
+      include-stacktrace: never
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+
+api:
+  security:
+    token:
+      secret: ${JWT_SECRET}
+      expiration: ${JWT_EXPIRATION:1800} #30 min #in seconds
+      refresh-expiration: ${JWT_REFRESH:604800} #7 days #in seconds
+      issuer: api_remoteserver.com.br
+
+server:
+  servlet:
+    context-path: /api/v1
+
+cors:
+  allowedOrigin: "*"
+
+frontend:
+  url: http://localhost:5173

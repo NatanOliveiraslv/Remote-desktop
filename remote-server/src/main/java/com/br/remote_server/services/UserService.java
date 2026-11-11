@@ -1,6 +1,5 @@
 package com.br.remote_server.services;
 
-import org.jspecify.annotations.Nullable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -39,7 +38,7 @@ public class UserService {
             .password(securityConfiguration.passwordEncoder().encode(data.password()))
             .firstName(data.firstName())
             .lastName(data.lastName())
-            .authProvider(Provider.LOCATION)
+            .authProvider(Provider.LOCAL)
             .build();
 
         return new UserResponseDTO(userRepository.save(userEntity));
@@ -63,7 +62,7 @@ public class UserService {
     }
 
     public AuthenticationResponseDTO refreshToken(String refreshToken) {
-        String subject = tokenService.getSubject(refreshToken); // Valida o token JWT
+        String subject = tokenService.getRefreshSubject(refreshToken); // Valida o token JWT
         final var newAccessToken = tokenService.generateToken(subject);
         return new AuthenticationResponseDTO(newAccessToken, refreshToken);
     }
