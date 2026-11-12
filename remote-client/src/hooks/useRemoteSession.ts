@@ -20,12 +20,11 @@ type ServerMessage = {
 // Mensagens de erro do servidor, traduzidas para exibir ao usuário.
 const SERVER_ERRORS: Record<string, string> = {
   "Computer offline": "O computador está offline.",
-  "Computer already has an active session":
-    "Este computador já está em uso em outra sessão.",
+  "Computer already has an active session": "Este computador já está em uso em outra sessão.",
   "Agent disconnected": "O Agent do computador foi desconectado.",
   "Invalid or inactive remote session": "A sessão remota não está mais ativa.",
-  "Failed to initiate remote session":
-    "Não foi possível iniciar a sessão remota.",
+  "Failed to initiate remote session": "Não foi possível iniciar a sessão remota.",
+  "Access denied": "Você não tem permissão para acessar este computador.",
 };
 
 function translateServerError(message?: string): string {

@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -15,6 +16,8 @@ import com.br.remote_server.websocket.registry.ActiveRemoteSession;
 import com.br.remote_server.websocket.registry.ComputerConnectionRegistry;
 import com.br.remote_server.websocket.registry.RemoteSessionRegistry;
 import com.br.remote_server.dtos.websocket.ConnectComputerMessage;
+import com.br.remote_server.models.User;
+import com.br.remote_server.services.ComputerService;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -28,18 +31,20 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
     private ObjectMapper objectMapper;
     @Autowired
     private RemoteSessionRegistry remoteSessionRegistry;
+    @Autowired
+    private ComputerService computerService;
 
-    @Override 
+    @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        
+
         System.out.println("WebSocket connection established: " + session.getId());
 
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws IOException {
-        
-        try{
+
+        try {
 
             JsonNode json = objectMapper.readTree(message.getPayload());
             String type = json.path("type").asText();
@@ -47,33 +52,31 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
             switch (type) {
 
                 case "CONNECT" -> {
-                    ConnectComputerMessage connectMessage = objectMapper.readValue(message.getPayload(), ConnectComputerMessage.class);
-                    
+                    ConnectComputerMessage connectMessage = objectMapper.readValue(message.getPayload(),
+                            ConnectComputerMessage.class);
                     connectToComputer(session, connectMessage.computerId());
-                
                 }
-
                 default -> {
                     forwardToAgent(session, json);
                 }
             }
 
-        } catch (Exception e){
+        } catch (Exception e) {
             System.err.println("Error processing Client message: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
-    // Encaminha a mensagem recebida do Client para o Agent correspondente, se a sessão remota estiver ativa.
+    // Encaminha a mensagem recebida do Client para o Agent correspondente, se a
+    // sessão remota estiver ativa.
     private void forwardToAgent(WebSocketSession clientSession, JsonNode json) throws IOException {
-        
+
         String sessionIdValue = json.path("remoteSessionId").asText();
 
         if (sessionIdValue.isBlank()) {
             sendJson(clientSession, Map.of(
-                "type", "ERROR",
-                "message", "Missing remoteSessionId"
-            ));
+                    "type", "ERROR",
+                    "message", "Missing remoteSessionId"));
             return;
         }
 
@@ -84,11 +87,10 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
         if (remoteSession == null
                 || !remoteSession.clientSession().getId().equals(clientSession.getId())
                 || !remoteSessionRegistry.isActive(remoteSessionId)) {
-                    
+
             sendJson(clientSession, Map.of(
-                "type", "ERROR",
-                "message", "Invalid or inactive remote session"
-            ));
+                    "type", "ERROR",
+                    "message", "Invalid or inactive remote session"));
             return;
         }
 
@@ -96,21 +98,29 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
 
         if (!agentSession.isOpen()) {
             sendJson(clientSession, Map.of(
-                "type", "ERROR",
-                "message", "Agent disconnected"
-            ));
+                    "type", "ERROR",
+                    "message", "Agent disconnected"));
             return;
         }
 
         agentSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(json)));
-    
+
     }
 
     private void connectToComputer(WebSocketSession clientSession, UUID computerId) throws IOException {
 
+        User user = getUser(clientSession);
+
+        // Mesma resposta para "não existe" e "não é seu": não revela quais computadores
+        // existem.
+        if (user == null || !computerService.canAccess(computerId, user.getId())) {
+            sendJson(clientSession, Map.of("type", "ERROR", "message", "Access denied"));
+            return;
+        }
+
         WebSocketSession agentSession = connectionRegistry.get(computerId);
 
-        if (agentSession == null || !agentSession.isOpen()){
+        if (agentSession == null || !agentSession.isOpen()) {
             clientSession.sendMessage(new TextMessage("{\"type\":\"ERROR\",\"message\":\"Computer offline\"}"));
             return;
         }
@@ -121,34 +131,31 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
             remoteSession = remoteSessionRegistry.create(computerId, clientSession, agentSession);
         } catch (IllegalStateException e) {
             sendJson(clientSession, Map.of(
-                "type", "ERROR",
-                "message", "Computer already has an active session"
-            ));
+                    "type", "ERROR",
+                    "message", "Computer already has an active session"));
             return;
         }
 
         try {
             // Primeiro, avisa o Client que a solicitação está em andamento
             sendJson(clientSession, Map.of(
-                "type", "CONNECTING",
-                "remoteSessionId", remoteSession.id().toString()
-            ));
+                    "type", "CONNECTING",
+                    "remoteSessionId", remoteSession.id().toString()));
 
             // Depois, encaminha o pedido ao Agent.
             sendJson(agentSession, Map.of(
-                "type", "REMOTE_CONNECTION_REQUEST",
-                "remoteSessionId", remoteSession.id().toString(),
-                "computerId", computerId.toString()
-            ));
+                    "type", "REMOTE_CONNECTION_REQUEST",
+                    "remoteSessionId", remoteSession.id().toString(),
+                    "computerId", computerId.toString()));
         } catch (IOException e) {
-            // Se houver um erro ao enviar a mensagem para o Agent, remove a sessão remota e notifica o Client.
+            // Se houver um erro ao enviar a mensagem para o Agent, remove a sessão remota e
+            // notifica o Client.
             remoteSessionRegistry.remove(remoteSession.id());
-            
+
             if (clientSession.isOpen()) {
                 sendJson(clientSession, Map.of(
-                    "type", "ERROR",
-                    "message", "Failed to initiate remote session"
-                ));
+                        "type", "ERROR",
+                        "message", "Failed to initiate remote session"));
             }
 
             throw e;
@@ -157,22 +164,31 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void sendJson(WebSocketSession session, Map<String, Object> data) throws IOException {
-        
+
         session.sendMessage(new TextMessage(objectMapper.writeValueAsString(data)));
     }
 
-    @Override 
+    private User getUser(WebSocketSession session) {
+        if (session.getPrincipal() instanceof Authentication authentication
+                && authentication.getPrincipal() instanceof User user) {
+            return user;
+        }
+        return null;
+    }
+
+    @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws IOException {
-        
+
         ActiveRemoteSession remoteSession = remoteSessionRegistry.getActiveByClientSession(session);
 
-        sendJson(remoteSession.agentSession(), Map.of(
-                "type", "REMOTE_CONNECTION_CLOSED",
-                "remoteSessionId", remoteSession.id().toString()
-            ));
-        remoteSessionRegistry.removeByClientSession(session);
-        
+        if (remoteSession != null) {
+            sendJson(remoteSession.agentSession(), Map.of(
+                    "type", "REMOTE_CONNECTION_CLOSED",
+                    "remoteSessionId", remoteSession.id().toString()));
+            remoteSessionRegistry.removeByClientSession(session);
+        }
+
         System.out.println("WebSocket connection closed: " + session.getId() + " with status: " + status);
     }
-    
+
 }

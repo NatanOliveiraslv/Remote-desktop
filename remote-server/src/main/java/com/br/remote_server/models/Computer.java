@@ -31,9 +31,10 @@ import java.util.UUID;
 public class Computer {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     @EqualsAndHashCode.Include
     @Column(nullable = false, unique = true)
-    private UUID id = UUID.randomUUID();
+    private UUID id;
 
     @Column(nullable = false, name = "name_computer")
     private String nameComputer;
@@ -59,11 +60,11 @@ public class Computer {
     @LastModifiedDate
     private Instant updatedAt;
 
-
-    public Computer(ComputerRequestDTO requestDTO) {
+    public Computer(ComputerRequestDTO requestDTO, User ownerUser) {
         this.nameComputer = requestDTO.nameComputer();
         this.operatingSystem = requestDTO.operatingSystem();
         this.agentVersion = requestDTO.agentVersion();
+        this.ownerUser = ownerUser;
     }
 
 }
