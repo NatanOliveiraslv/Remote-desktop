@@ -1,4 +1,4 @@
-import { ApiError, API_BASE, jsonRequest, readErrorMessage, request } from "./http";
+import { ApiError, API_BASE, jsonRequest, request, readErrorMessage } from "./http";
 import { setAccessToken } from "../auth/token";
 
 export interface RegisterInput {
@@ -46,7 +46,7 @@ export async function registerUser(input: RegisterInput): Promise<void> {
   if (!response.ok) {
     throw new ApiError(
       response.status,
-      await readErrorMessage(response, "Confira os dados informados e tente novamente.")
+      await readRegisterErrorMessage(response)
     );
   }
 }
@@ -58,4 +58,37 @@ export async function signOut(): Promise<void> {
   } finally {
     setAccessToken(null);
   }
+}
+
+/**
+ * Trata a resposta de erro do GlobalExceptionHandler do servidor.
+ * O backend devolve { field: message, ... } para erros de validação (400),
+ * ou { message: "..." } para outros erros de negócio.
+ */
+async function readRegisterErrorMessage(response: Response): Promise<string> {
+  try {
+    const data: unknown = await response.json();
+
+    if (data && typeof data === "object") {
+      // Mapa de erros de validação: { email: "...", password: "...", ... }
+      const entries = Object.entries(data as Record<string, unknown>).filter(
+        ([, v]) => typeof v === "string"
+      ) as [string, string][];
+
+      if (entries.length > 0) {
+        // Prioridade: mostrar o erro de senha primeiro, depois email, depois qualquer outro.
+        const priority = ["password", "email", "firstName", "lastName"];
+        entries.sort(
+          ([a], [b]) =>
+            (priority.indexOf(a) === -1 ? 99 : priority.indexOf(a)) -
+            (priority.indexOf(b) === -1 ? 99 : priority.indexOf(b))
+        );
+        return entries.map(([, msg]) => msg).join(" ");
+      }
+    }
+  } catch {
+    // Corpo vazio ou não-JSON.
+  }
+
+  return "Confira os dados informados e tente novamente.";
 }

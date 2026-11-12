@@ -1,10 +1,26 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { FormEvent } from "react";
 import { GOOGLE_LOGIN_URL } from "../api/auth";
 import { useAuth } from "../auth/auth-context";
 import { GoogleIcon, MonitorIcon } from "./icons";
 
 type Mode = "signin" | "signup";
+
+interface PasswordRule {
+  label: string;
+  test: (pw: string) => boolean;
+}
+
+const PASSWORD_RULES: PasswordRule[] = [
+  { label: "Pelo menos 8 caracteres", test: (pw) => pw.length >= 8 },
+  { label: "Uma letra maiúscula (A–Z)", test: (pw) => /[A-Z]/.test(pw) },
+  { label: "Uma letra minúscula (a–z)", test: (pw) => /[a-z]/.test(pw) },
+  { label: "Um número (0–9)", test: (pw) => /\d/.test(pw) },
+  {
+    label: "Um caractere especial (!@#$%…)",
+    test: (pw) => /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]/.test(pw),
+  },
+];
 
 export function LoginPage() {
   const auth = useAuth();
@@ -14,20 +30,34 @@ export function LoginPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isSignup = mode === "signup";
 
+  const passwordRuleResults = useMemo(
+    () => PASSWORD_RULES.map((rule) => ({ ...rule, valid: rule.test(password) })),
+    [password]
+  );
+
+  const passwordValid = passwordRuleResults.every((r) => r.valid);
+
   function switchMode() {
     setMode(isSignup ? "signin" : "signup");
     setPassword("");
+    setPasswordTouched(false);
     setError(null);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
+
+    if (isSignup && !passwordValid) {
+      setPasswordTouched(true);
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -125,9 +155,30 @@ export function LoginPage() {
               placeholder={isSignup ? "Crie uma senha" : "Sua senha"}
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (!passwordTouched && e.target.value.length > 0) {
+                  setPasswordTouched(true);
+                }
+              }}
             />
           </label>
+
+          {isSignup && (passwordTouched || !passwordValid) && password.length > 0 && (
+            <ul className="password-rules" aria-label="Requisitos da senha">
+              {passwordRuleResults.map((rule) => (
+                <li
+                  key={rule.label}
+                  className={`password-rule ${rule.valid ? "password-rule--ok" : "password-rule--fail"}`}
+                >
+                  <span className="password-rule-icon" aria-hidden="true">
+                    {rule.valid ? "✓" : "✗"}
+                  </span>
+                  {rule.label}
+                </li>
+              ))}
+            </ul>
+          )}
 
           {error && (
             <div className="notice notice-error" role="alert">

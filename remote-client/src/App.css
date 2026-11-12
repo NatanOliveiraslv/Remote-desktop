@@ -140,6 +140,55 @@
   border-color: var(--accent);
 }
 
+/* ---------- Requisitos de senha ---------- */
+
+.password-rules {
+  margin: 0;
+  padding: 10px 14px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface-2, rgba(255,255,255,0.04));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.password-rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  transition: color 0.15s;
+}
+
+.password-rule--ok {
+  color: var(--online, #3ddc97);
+}
+
+.password-rule--fail {
+  color: var(--muted);
+}
+
+.password-rule-icon {
+  font-size: 12px;
+  font-weight: 700;
+  width: 16px;
+  text-align: center;
+  flex: none;
+}
+
+.password-rule--ok .password-rule-icon {
+  color: var(--online, #3ddc97);
+}
+
+.password-rule--fail .password-rule-icon {
+  color: var(--danger, #ff8a80);
+}
+
+/* ----------- */
+
 .login-footer {
   margin: 0;
   font-size: 14px;
