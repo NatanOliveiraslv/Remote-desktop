@@ -1,94 +1,91 @@
 # Remote Agent (MVP)
 
-Projeto Java 21 mínimo para o computador que será acessado remotamente. Ele conecta ao WebSocket do `remote-server`, registra um `computerId` persistente, aceita pedidos de conexão e trata o comando `MOUSE_MOVE`.
+Projeto Java 21 para o computador que será controlado remotamente. Ele conecta ao WebSocket do `remote-server` com autenticação segura (`computerId` e `agentToken`), aceita pedidos de conexão remota, transmite a tela em tempo real e processa comandos de mouse.
 
 ## Requisitos
 
 - JDK 21 instalado
 - Maven 3.9+ instalado
 - O Spring Boot `remote-server` em execução
-- Uma sessão de desktop local disponível (o `java.awt.Robot` não funciona em ambientes sem interface gráfica)
+- Sessão de desktop ativa com interface gráfica (necessário para `java.awt.Robot` e captura de tela)
 
-## Endpoint do servidor
+## Autenticação e Credenciais
 
-O padrão configurado é:
+O `remote-server` agora exige autenticação durante o handshake do WebSocket.
+Ao cadastrar um computador no servidor (`POST /api/v1/computers/create`), o servidor gera o `id` (`computerId`) e o `agentToken` correspondente.
+
+### Formas de fornecer as credenciais ao Agent
+
+1. **Parâmetros de linha de comando**:
+   ```bash
+   java -jar target/remote-agent.jar --computer-id <UUID> --token <AGENT_TOKEN>
+   ```
+2. **Propriedades de Sistema (JVM)**:
+   ```bash
+   java -Dagent.computer-id=<UUID> -Dagent.token=<AGENT_TOKEN> -jar target/remote-agent.jar
+   ```
+3. **Variáveis de Ambiente**:
+   ```bash
+   export AGENT_COMPUTER_ID="<UUID>"
+   export AGENT_TOKEN="<AGENT_TOKEN>"
+   java -jar target/remote-agent.jar
+   ```
+4. **Armazenamento Seguro Criptografado (`.agent-credentials`)**:
+   - Ao executar o Agent pela primeira vez em um terminal interativo sem passar credenciais, o Agent solicita interativamente o `computerId` e o `agentToken`.
+   - As credenciais são criptografadas em repouso com **AES-256-GCM** e chave derivada via **PBKDF2** vinculada ao usuário e máquina atual.
+   - No Windows, são aplicadas permissões estritas de ACL; em Linux/macOS, permissão `0600` (`rw-------`), garantindo que outros usuários do sistema operacional não tenham acesso ao token.
+   - Nas execuções subsequentes, o Agent carrega automaticamente as credenciais salvas em `.agent-credentials`.
+
+## Endpoint do Servidor
+
+O endpoint padrão configurado é:
 
 ```text
 ws://localhost:8080/api/v1/ws/agent
 ```
 
-Esse caminho precisa ser igual ao registrado no `WebSocketConfig` do seu Spring Boot. Para usar outro endereço, informe a propriedade `agent.server-uri` na execução.
+Durante o handshake HTTP do WebSocket, o Agent envia os parâmetros de autenticação via query string e headers:
+- Query parameters: `?computerId=<UUID>&token=<AGENT_TOKEN>&agentToken=<AGENT_TOKEN>`
+- Headers: `X-Agent-Token` e `X-Computer-Id`
 
-## Compilar
+Para apontar para outro servidor:
+```bash
+java -jar target/remote-agent.jar --server-uri ws://seu-servidor:8080/api/v1/ws/agent
+```
 
-No terminal, na pasta `remote-agent`:
+## Compilar e Testar
+
+Na pasta `remote-agent`:
 
 ```bash
+# Executar testes unitários
+mvn test
+
+# Gerar JAR executável com dependências
 mvn clean package
 ```
 
-O arquivo executável será criado em `target/remote-agent.jar`.
+O arquivo executável será gerado em `target/remote-agent.jar`.
 
 ## Executar
 
-Windows (PowerShell):
-
+```bash
+java -jar target/remote-agent.jar
+```
+Ou com parâmetros explícitos:
 ```powershell
-java -jar target/remote-agent.jar
+java -jar target/remote-agent.jar --computer-id "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" --token "7f8b9c..."
 ```
 
-Linux/macOS:
+## Protocolo
 
-```bash
-java -jar target/remote-agent.jar
-```
-
-Para indicar outro endpoint:
-
-```bash
-java -Dagent.server-uri=ws://localhost:8080/api/v1/ws/agent -jar target/remote-agent.jar
-```
-
-Na primeira execução, o programa cria `computer-id.txt` na pasta atual. Esse UUID é reutilizado nas próximas execuções. Não apague esse arquivo se quiser que o computador mantenha a mesma identidade registrada.
-
-## Protocolo implementado
-
-### Agent -> servidor, ao conectar
-
-```json
-{
-  "type": "AGENT_REGISTER",
-  "computerId": "UUID-PERSISTIDO-EM-COMPUTER-ID.TXT"
-}
-```
-
-### Servidor -> Agent, ao solicitar conexão
-
-```json
-{
-  "type": "REMOTE_CONNECTION_REQUEST",
-  "remoteSessionId": "UUID-DA-SESSAO",
-  "computerId": "UUID-DO-COMPUTADOR"
-}
-```
-
-O Agent responde automaticamente, para o MVP:
-
-```json
-{
-  "type": "CONNECTION_ACCEPTED",
-  "remoteSessionId": "UUID-DA-SESSAO"
-}
-```
-
-### Client -> servidor -> Agent
-
-```json
-{
-  "type": "MOUSE_MOVE",
-  "remoteSessionId": "UUID-DA-SESSAO",
-  "x": 500,
-  "y": 300
-}
-```
-O servidor deve encaminhar a mensagem ao Agent com o mesmo `remoteSessionId`. O Agent só executa o comando se corresponder à sessão aceita e se as coordenadas estiverem dentro da tela principal.
+1. **Handshake e Conexão**:
+   - O Agent conecta a `/api/v1/ws/agent?computerId=...&token=...`
+   - O `AgentHandshakeInterceptor` valida o hash SHA-256 do token no banco de dados em tempo constante.
+   - Após o handshake aceito, o Agent é registrado e fica online imediatamente.
+2. **Reconexão Automática**:
+   - Em caso de desconexão ou indisponibilidade temporária do servidor, o Agent agenda tentativas automáticas de reconexão.
+3. **Controle Remoto e Transmissão**:
+   - `REMOTE_CONNECTION_REQUEST`: O Agent responde com `CONNECTION_ACCEPTED` e envia as dimensões da tela.
+   - Transmissão periódica de frames JPEG via mensagens binárias WebSocket.
+   - Comandos `MOUSE_MOVE`, `MOUSE_BUTTON_DOWN`, `MOUSE_BUTTON_UP` validados pelo `remoteSessionId` ativo.

@@ -8,6 +8,7 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
+import com.br.remote_server.infra.websocket.AgentHandshakeInterceptor;
 import com.br.remote_server.websocket.handler.AgentWebSocketHandler;
 import com.br.remote_server.websocket.handler.ClientWebSocketHandler;
 
@@ -19,10 +20,12 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private AgentWebSocketHandler agentWebSocketHandler;
     @Autowired
     private ClientWebSocketHandler clientWebSocketHandler;
+    @Autowired
+    private AgentHandshakeInterceptor agentHandshakeInterceptor;
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(agentWebSocketHandler, "/ws/agent").setAllowedOrigins("*");
+        registry.addHandler(agentWebSocketHandler, "/ws/agent").addInterceptors(agentHandshakeInterceptor).setAllowedOrigins("*");
         registry.addHandler(clientWebSocketHandler, "/ws/client").setAllowedOrigins("*");
     }
 
@@ -33,5 +36,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
         container.setMaxTextMessageBufferSize(64 * 1024);
         return container;
     }
+    
 
 }

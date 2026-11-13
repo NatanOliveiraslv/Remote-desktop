@@ -11,7 +11,6 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import com.br.remote_server.websocket.registry.ComputerConnectionRegistry;
-import com.br.remote_server.dtos.websocket.AgentRegisterMessage;
 import com.br.remote_server.dtos.websocket.AgentConnectionAccepted;
 import com.br.remote_server.websocket.registry.RemoteSessionRegistry;
 import com.br.remote_server.websocket.registry.ActiveRemoteSession;
@@ -34,8 +33,11 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-
-        System.out.println("WebSocket connection established: " + session.getId());
+        // computerId já foi validado e colocado pelo interceptor
+        UUID computerId = (UUID) session.getAttributes().get("computerId");
+        connectionRegistry.register(computerId, session);
+        computerService.updateLastSeenAt(computerId);
+        System.out.println("Agent connected and registered: " + computerId);
 
     }
 
@@ -48,26 +50,6 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             String type = json.path("type").asText();
 
             switch (type) {
-
-                case "AGENT_REGISTER" -> {
-
-                    AgentRegisterMessage registerMessage = objectMapper.readValue(message.getPayload(),
-                            AgentRegisterMessage.class);
-
-                    UUID computerId = registerMessage.computerId();
-
-                    if (computerId == null || !computerService.existsById(computerId)) {
-                        rejectAgent(session, "Invalid credentials");
-                        return;
-                    }
-
-                    connectionRegistry.register(computerId, session);
-
-                    session.getAttributes().put("computerId", computerId);
-
-                    System.out.println("Computer registered: " + computerId);
-
-                }
 
                 case "CONNECTION_ACCEPTED" -> {
 
@@ -167,12 +149,6 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
             clientSession.sendMessage(new TextMessage(message.getPayload()));
             return;
         }
-    }
-
-    private void rejectAgent(WebSocketSession session, String reason) throws IOException {
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(
-                Map.of("type", "ERROR", "message", reason))));
-        session.close(CloseStatus.POLICY_VIOLATION);
     }
 
     @Override

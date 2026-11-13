@@ -1,11 +1,14 @@
 package com.br.remote_agent.websocket;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -17,6 +20,7 @@ import java.awt.Toolkit;
 import java.awt.Dimension;
 
 import com.br.remote_agent.control.RemoteDesktopController;
+import com.br.remote_agent.security.AgentCredentials;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -26,13 +30,15 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
     private static final int MAX_SCREEN_WIDTH = 1280;
     private static final float JPEG_QUALITY = 0.55f;
     private static final long SCREEN_FRAME_INTERVAL_MS = 1000L; // Start at 1 FPS.
+    private static final long RECONNECT_DELAY_SECONDS = 5L;
 
     private final URI serverUri;
-    private final UUID computerId;
+    private final AgentCredentials credentials;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RemoteDesktopController desktopController;
     private final StringBuilder incomingText = new StringBuilder();
+
     private final ScheduledExecutorService screenCaptureExecutor = Executors
             .newSingleThreadScheduledExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "remote-agent-screen-capture");
@@ -40,44 +46,99 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
                 return thread;
             });
 
+    private final ScheduledExecutorService reconnectExecutor = Executors
+            .newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "remote-agent-reconnect");
+                thread.setDaemon(true);
+                return thread;
+            });
+
     private volatile WebSocket webSocket;
     private volatile UUID activeRemoteSessionId;
     private volatile ScheduledFuture<?> screenCaptureTask;
+    private volatile boolean isClosed = false;
+    private volatile boolean isConnecting = false;
 
-    public AgentWebSocketHandler(URI serverUri, UUID computerId) throws Exception {
-        this.serverUri = serverUri;
-        this.computerId = computerId;
+    public AgentWebSocketHandler(URI serverUri, AgentCredentials credentials) throws Exception {
+        this.serverUri = Objects.requireNonNull(serverUri, "serverUri must not be null");
+        this.credentials = Objects.requireNonNull(credentials, "credentials must not be null");
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
         this.desktopController = new RemoteDesktopController();
     }
 
-    public void connect() {
-        System.out.println("Connecting to " + serverUri + " ...");
+    public AgentWebSocketHandler(URI serverUri, UUID computerId, String agentToken) throws Exception {
+        this(serverUri, new AgentCredentials(computerId, agentToken));
+    }
+
+    public AgentCredentials getCredentials() {
+        return credentials;
+    }
+
+    public synchronized void connect() {
+        if (isClosed) {
+            return;
+        }
+
+        if (webSocket != null && !webSocket.isInputClosed() && !webSocket.isOutputClosed()) {
+            return;
+        }
+
+        isConnecting = true;
+        URI handshakeUri = buildHandshakeUri();
+        System.out.println("Connecting to " + serverUri + " as computer " + credentials.computerId() + " ...");
 
         httpClient.newWebSocketBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
-                .buildAsync(serverUri, this)
+                .header("X-Agent-Token", credentials.agentToken())
+                .header("X-Computer-Id", credentials.computerId().toString())
+                .buildAsync(handshakeUri, this)
                 .whenComplete((socket, error) -> {
+                    isConnecting = false;
                     if (error != null) {
                         System.err.println("WebSocket connection failed: " + error.getMessage());
+                        String msg = error.getMessage() != null ? error.getMessage() : "";
+                        if (msg.contains("403") || msg.contains("handshake") || msg.contains("rejected")) {
+                            System.err.println("Authentication rejected by server. Verify computerId and agentToken.");
+                        }
+                        scheduleReconnect();
                     } else {
                         this.webSocket = socket;
                     }
-                })
-                .join();
+                });
+    }
+
+    private URI buildHandshakeUri() {
+        String base = serverUri.toString();
+        char separator = base.contains("?") ? '&' : '?';
+        String encodedComputerId = URLEncoder.encode(credentials.computerId().toString(), StandardCharsets.UTF_8);
+        String encodedToken = URLEncoder.encode(credentials.agentToken(), StandardCharsets.UTF_8);
+
+        // Include both 'token' and 'agentToken' query parameters for broad server compatibility
+        String query = String.format("computerId=%s&token=%s&agentToken=%s",
+                encodedComputerId, encodedToken, encodedToken);
+        return URI.create(base + separator + query);
+    }
+
+    private synchronized void scheduleReconnect() {
+        if (isClosed || isConnecting) {
+            return;
+        }
+
+        System.out.printf("Scheduling reconnection attempt in %d seconds...%n", RECONNECT_DELAY_SECONDS);
+        reconnectExecutor.schedule(() -> {
+            if (!isClosed && (webSocket == null || webSocket.isInputClosed() || webSocket.isOutputClosed())) {
+                connect();
+            }
+        }, RECONNECT_DELAY_SECONDS, TimeUnit.SECONDS);
     }
 
     @Override
     public void onOpen(WebSocket socket) {
         this.webSocket = socket;
-        System.out.println("Connected to Spring Boot. WebSocket ID is managed by the server.");
-
-        sendJson(Map.of(
-                "type", "AGENT_REGISTER",
-                "computerId", computerId.toString()));
-
+        System.out.println("Connected and authenticated with remote-server for computer: " + credentials.computerId());
+        // Registration is performed at handshake time by AgentHandshakeInterceptor
         socket.request(1);
     }
 
@@ -297,8 +358,10 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
     }
 
     public void close() {
+        isClosed = true;
         stopScreenCapture();
         screenCaptureExecutor.shutdownNow();
+        reconnectExecutor.shutdownNow();
         WebSocket socket = this.webSocket;
         if (socket != null) {
             try {
@@ -315,12 +378,13 @@ public final class AgentWebSocketHandler implements WebSocket.Listener {
         activeRemoteSessionId = null;
         stopScreenCapture();
         System.out.println("Disconnected from server. Code=" + statusCode + ", reason=" + reason);
+        scheduleReconnect();
         return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public void onError(WebSocket socket, Throwable error) {
         System.err.println("WebSocket error: " + error.getMessage());
-        error.printStackTrace();
+        scheduleReconnect();
     }
 }

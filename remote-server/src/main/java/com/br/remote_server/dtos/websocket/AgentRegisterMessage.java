@@ -6,13 +6,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public record AgentRegisterMessage (
-    @NotBlank
-    String type,
-    @NotNull
-    UUID computerId
+    @NotBlank String type,
+    @NotNull UUID computerId,
+    @NotBlank String agentToken
 ) {
-    public AgentRegisterMessage(String type, UUID computerId) {
-        this.type = type;
-        this.computerId = computerId;
-    }
 }

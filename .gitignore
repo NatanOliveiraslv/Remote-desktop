@@ -31,6 +31,10 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+### Sensitive Credentials ###
+.agent-credentials*
+computer-id.txt
+
 ### VS Code ###
 .vscode/
 

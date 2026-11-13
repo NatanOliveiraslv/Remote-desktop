@@ -1,0 +1,15 @@
+# Target directory
+target/
+
+# Sensitive credentials & ID files
+.agent-credentials*
+credentials.json
+computer-id.txt
+
+# IDE & Editor files
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project

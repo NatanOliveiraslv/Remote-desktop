@@ -52,6 +52,9 @@ public class Computer {
     @JoinColumn(name = "ownerUser_id")
     private User ownerUser;
 
+    @Column(name = "agent_token_hash", nullable = false, unique = true)
+    private String agentTokenHash;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @CreatedDate
     private Instant createdAt;
@@ -60,11 +63,12 @@ public class Computer {
     @LastModifiedDate
     private Instant updatedAt;
 
-    public Computer(ComputerRequestDTO requestDTO, User ownerUser) {
+    public Computer(ComputerRequestDTO requestDTO, User ownerUser, String agentTokenHash) {
         this.nameComputer = requestDTO.nameComputer();
         this.operatingSystem = requestDTO.operatingSystem();
         this.agentVersion = requestDTO.agentVersion();
         this.ownerUser = ownerUser;
+        this.agentTokenHash = agentTokenHash;
     }
 
 }
