@@ -1,4 +1,4 @@
-import type { Computer } from "../api/computers";
+import type { Computer, PageMetadata } from "../api/computers";
 import { ChevronIcon, MonitorIcon } from "./icons";
 
 interface ComputerListProps {
@@ -7,6 +7,8 @@ interface ComputerListProps {
   error: string | null;
   onSelect: (computer: Computer) => void;
   onRetry: () => void;
+  page?: PageMetadata | null;
+  onPageChange?: (newPage: number) => void;
 }
 
 function describe(computer: Computer): string {
@@ -24,6 +26,8 @@ export function ComputerList({
   error,
   onSelect,
   onRetry,
+  page,
+  onPageChange,
 }: ComputerListProps) {
   if (loading) {
     return (
@@ -39,11 +43,19 @@ export function ComputerList({
     return (
       <div className="state-box" role={error ? "alert" : undefined}>
         <p>{error ?? "Nenhum computador cadastrado ainda."}</p>
-        {error && (
+        {page && page.number > 0 ? (
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => onPageChange?.(0)}
+          >
+            Voltar para a primeira página
+          </button>
+        ) : error ? (
           <button type="button" className="btn btn-outline" onClick={onRetry}>
             Tentar novamente
           </button>
-        )}
+        ) : null}
       </div>
     );
   }
@@ -87,6 +99,30 @@ export function ComputerList({
           </li>
         ))}
       </ul>
+
+      {page && page.totalPages > 1 && (
+        <nav className="pagination" aria-label="Navegação entre páginas">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            disabled={page.number <= 0 || loading}
+            onClick={() => onPageChange?.(page.number - 1)}
+          >
+            Anterior
+          </button>
+          <span className="pagination-info">
+            Página {page.number + 1} de {page.totalPages}
+          </span>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            disabled={page.number >= page.totalPages - 1 || loading}
+            onClick={() => onPageChange?.(page.number + 1)}
+          >
+            Próxima
+          </button>
+        </nav>
+      )}
     </>
   );
 }

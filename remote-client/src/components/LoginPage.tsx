@@ -18,7 +18,7 @@ const PASSWORD_RULES: PasswordRule[] = [
   { label: "Um número (0–9)", test: (pw) => /\d/.test(pw) },
   {
     label: "Um caractere especial (!@#$%…)",
-    test: (pw) => /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?]/.test(pw),
+    test: (pw) => /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(pw),
   },
 ];
 

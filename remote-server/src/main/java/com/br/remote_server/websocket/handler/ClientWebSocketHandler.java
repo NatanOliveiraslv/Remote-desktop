@@ -16,8 +16,12 @@ import com.br.remote_server.websocket.registry.ActiveRemoteSession;
 import com.br.remote_server.websocket.registry.ComputerConnectionRegistry;
 import com.br.remote_server.websocket.registry.RemoteSessionRegistry;
 import com.br.remote_server.dtos.websocket.ConnectComputerMessage;
+import com.br.remote_server.enums.SessionEndReason;
+import com.br.remote_server.models.Computer;
 import com.br.remote_server.models.User;
+import com.br.remote_server.repositorys.ComputerRepository;
 import com.br.remote_server.services.ComputerService;
+import com.br.remote_server.services.RemoteSessionService;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -33,6 +37,10 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
     private RemoteSessionRegistry remoteSessionRegistry;
     @Autowired
     private ComputerService computerService;
+    @Autowired
+    private RemoteSessionService remoteSessionService;
+    @Autowired
+    private ComputerRepository computerRepository;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -129,6 +137,17 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
 
         try {
             remoteSession = remoteSessionRegistry.create(computerId, clientSession, agentSession);
+
+            // Busca o objeto Computer
+            Computer computer = computerRepository.findById(computerId).orElse(null);
+
+            // Persiste o início da solicitação no banco
+            remoteSessionService.startSessionRequest(
+                    remoteSession.id(),
+                    user,
+                    computer,
+                    extractClientIp(clientSession));
+
         } catch (IllegalStateException e) {
             sendJson(clientSession, Map.of(
                     "type", "ERROR",
@@ -176,12 +195,23 @@ public class ClientWebSocketHandler extends TextWebSocketHandler {
         return null;
     }
 
+    private String extractClientIp(WebSocketSession session) {
+        if (session.getRemoteAddress() != null && session.getRemoteAddress().getAddress() != null) {
+            return session.getRemoteAddress().getAddress().getHostAddress();
+        }
+        return "UNKNOWN";
+    }
+
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws IOException {
 
         ActiveRemoteSession remoteSession = remoteSessionRegistry.getActiveByClientSession(session);
 
         if (remoteSession != null) {
+
+            // Registra que o Client/Usuário encerrou a sessão
+            remoteSessionService.endSession(remoteSession.id(), SessionEndReason.USER_DISCONNECTED);
+
             sendJson(remoteSession.agentSession(), Map.of(
                     "type", "REMOTE_CONNECTION_CLOSED",
                     "remoteSessionId", remoteSession.id().toString()));

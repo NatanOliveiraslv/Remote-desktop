@@ -2,10 +2,11 @@ package com.br.remote_server.services;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import com.br.remote_server.models.Computer;
@@ -45,12 +46,10 @@ public class ComputerService {
     }
 
     @Transactional(readOnly = true)
-    public List<ComputerResponseDTO> listComputer(User user) {
-        return computerRepository.findByOwnerUserId(user.getId())
-                .stream()
-                .map(computer -> new ComputerResponseDTO(
-                        computer, connectionRegistry.isOnline(computer.getId())))
-                .toList();
+    public Page<ComputerResponseDTO> listComputer(User user, Pageable pageable) {
+        return computerRepository
+                .findByOwnerUserId(user.getId(), pageable)
+                .map(computer -> new ComputerResponseDTO(computer, connectionRegistry.isOnline(computer.getId())));
     }
 
     @Transactional(readOnly = true)

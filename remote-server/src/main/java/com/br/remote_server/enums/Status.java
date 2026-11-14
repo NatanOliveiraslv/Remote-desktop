@@ -5,6 +5,7 @@ public enum Status {
     REQUESTED,
     CONNECTING,
     ACTIVE,
+    REJECTED,
     FINISHED,
     FAILED
 

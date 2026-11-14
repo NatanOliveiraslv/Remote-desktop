@@ -1,5 +1,6 @@
 package com.br.remote_server.models;
 
+import com.br.remote_server.enums.SessionEndReason;
 import com.br.remote_server.enums.Status;
 import jakarta.persistence.*;
 import lombok.*;
@@ -14,6 +15,7 @@ import java.util.UUID;
 @Table(name = "remote_sessions")
 @Getter
 @Setter
+@Builder
 @AllArgsConstructor
 @NoArgsConstructor
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
@@ -22,8 +24,8 @@ public class RemoteSession {
 
     @Id
     @EqualsAndHashCode.Include
-    @Column(nullable = false, unique = true)
-    private UUID id = UUID.randomUUID();
+    @Column(name = "id", nullable = false, unique = true)
+    private UUID sessionId;
 
     @ManyToOne
     @JoinColumn(name = "user_accessing_id")
@@ -36,6 +38,16 @@ public class RemoteSession {
     @Enumerated(EnumType.STRING)
     @Column(name = "status_session", nullable = false)
     private Status statusSession;
+
+    @Column(name = "client_ip")
+    private String clientIp;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "end_reason")
+    private SessionEndReason endReason;
+
+    @Column(name = "duration_seconds")
+    private Long durationSeconds;
 
     @Column(name = "started_at")
     private Instant startedAt;

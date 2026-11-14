@@ -11,10 +11,12 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import com.br.remote_server.websocket.registry.ComputerConnectionRegistry;
-import com.br.remote_server.dtos.websocket.AgentConnectionAccepted;
+import com.br.remote_server.dtos.websocket.AgentRegisterMessage;
+import com.br.remote_server.enums.SessionEndReason;
 import com.br.remote_server.websocket.registry.RemoteSessionRegistry;
 import com.br.remote_server.websocket.registry.ActiveRemoteSession;
 import com.br.remote_server.services.ComputerService;
+import com.br.remote_server.services.RemoteSessionService;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -30,6 +32,8 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
     private RemoteSessionRegistry remoteSessionRegistry;
     @Autowired
     private ComputerService computerService;
+    @Autowired
+    private RemoteSessionService remoteSessionService;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -53,15 +57,14 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
                 case "CONNECTION_ACCEPTED" -> {
 
-                    AgentConnectionAccepted connectionAccepted = objectMapper.readValue(message.getPayload(),
-                            AgentConnectionAccepted.class);
+                    AgentRegisterMessage agentMessage = objectMapper.treeToValue(json, AgentRegisterMessage.class);
 
-                    if (connectionAccepted.remoteSessionId() == null) {
+                    if (agentMessage.remoteSessionId() == null) {
                         System.err.println("Missing remoteSessionId in Agent response");
                         return;
                     }
 
-                    UUID remoteSessionId = connectionAccepted.remoteSessionId();
+                    UUID remoteSessionId = agentMessage.remoteSessionId();
 
                     ActiveRemoteSession remoteSession = remoteSessionRegistry.get(remoteSessionId);
 
@@ -90,6 +93,8 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
                         return;
                     }
 
+                    remoteSessionService.markAsAccepted(remoteSessionId);
+
                     int screenWidth = json.path("screenWidth").asInt(0);
                     int screenHeight = json.path("screenHeight").asInt(0);
 
@@ -109,6 +114,29 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
 
                     System.out.println("Connection accepted and forwarded to Client: " + remoteSessionId);
 
+                }
+
+                case "CONNECTION_REJECTED" -> {
+
+                    AgentRegisterMessage agentMessage = objectMapper.treeToValue(json, AgentRegisterMessage.class);
+
+                    if (agentMessage.remoteSessionId() == null) {
+
+                        ActiveRemoteSession remoteSession = remoteSessionRegistry.get(agentMessage.remoteSessionId());
+
+                        if (remoteSession != null) {
+                            remoteSessionService.markAsRejected(agentMessage.remoteSessionId());
+
+                            // Avisa o cliente que foi recusado
+                            if (remoteSession.clientSession().isOpen()) {
+                                remoteSession.clientSession().sendMessage(new TextMessage(
+                                        objectMapper.writeValueAsString(Map.of(
+                                                "type", "CONNECTION_REJECTED",
+                                                "message", "The agent rejected the connection."))));
+                            }
+                            remoteSessionRegistry.remove(agentMessage.remoteSessionId());
+                        }
+                    }
                 }
 
                 default -> {
@@ -151,18 +179,40 @@ public class AgentWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    private void sendJson(WebSocketSession session, Map<String, Object> data) throws IOException {
+        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(data)));
+    }
+
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-
-        Object value = session.getAttributes().get("computerId");
-
-        if (value instanceof UUID computerId) {
-            connectionRegistry.remove(computerId, session);
+        try {
+            // Finaliza sessão remota caso existisse uma em andamento
+            ActiveRemoteSession activeSession = remoteSessionRegistry.getActiveByAgentSession(session);
+            if (activeSession != null) {
+                remoteSessionService.endSession(activeSession.id(), SessionEndReason.AGENT_DISCONNECTED);
+                // Notifica o Client que o Agent caiu
+                try {
+                    if (activeSession.clientSession().isOpen()) {
+                        sendJson(activeSession.clientSession(), Map.of(
+                                "type", "ERROR",
+                                "message", "Agent unexpectedly disconnected"));
+                    }
+                } catch (IOException e) {
+                    System.err.println("Error notifying client about agent disconnect: " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error while handling remote session cleanup: " + e.getMessage());
+        } finally {
+            // 2. Garante que os registros SEMPRE serão limpos, mesmo se ocorrer algum erro
+            // acima
+            Object value = session.getAttributes().get("computerId");
+            if (value instanceof UUID computerId) {
+                connectionRegistry.remove(computerId, session);
+            }
+            remoteSessionRegistry.removeByAgentSession(session);
+            System.out.println("Agent disconnected: " + session.getId());
         }
-
-        remoteSessionRegistry.removeByAgentSession(session);
-
-        System.out.println("Agent disconnected: " + session.getId());
     }
 
     @Override

@@ -16,7 +16,8 @@ export function Dashboard() {
     session.status === "connecting" || session.status === "connected";
 
   // A lista só é atualizada enquanto não há uma sessão aberta.
-  const { computers, loading, error, refresh } = useComputers(!inSession);
+  const { computers, page, loading, error, refresh, setPageNumber } =
+    useComputers(!inSession);
 
   const onlineCount = computers.filter((computer) => computer.online).length;
 
@@ -24,6 +25,12 @@ export function Dashboard() {
     setSelected(computer);
     void session.connect(computer.id);
   }
+
+  const descriptionText = loading
+    ? "Carregando computadores…"
+    : page && page.totalPages > 1
+      ? `${onlineCount} online nesta página · ${page.totalElements} computadores no total. Selecione um computador online para conectar.`
+      : `${onlineCount} online · ${computers.length - onlineCount} offline. Selecione um computador online para conectar.`;
 
   return (
     <div className="app">
@@ -49,11 +56,7 @@ export function Dashboard() {
           <div className="page-heading">
             <div>
               <h1>Meus computadores</h1>
-              <p className="page-description">
-                {loading
-                  ? "Carregando computadores…"
-                  : `${onlineCount} online · ${computers.length - onlineCount} offline. Selecione um computador online para conectar.`}
-              </p>
+              <p className="page-description">{descriptionText}</p>
             </div>
 
             <button type="button" className="btn btn-outline" onClick={refresh}>
@@ -73,6 +76,8 @@ export function Dashboard() {
 
           <ComputerList
             computers={computers}
+            page={page}
+            onPageChange={setPageNumber}
             loading={loading}
             error={error}
             onSelect={handleSelect}
