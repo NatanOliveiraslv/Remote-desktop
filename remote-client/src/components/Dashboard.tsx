@@ -91,10 +91,13 @@ export function Dashboard() {
           computerName={selected.nameComputer}
           status={session.status}
           statusMessage={session.statusMessage}
-          screenImageUrl={session.screenImageUrl}
+          hasFrame={session.hasFrame}
+          canvasRef={session.canvasRef}
           remoteSessionId={session.remoteSessionId}
           remoteScreenWidth={session.remoteScreenWidth}
           remoteScreenHeight={session.remoteScreenHeight}
+          fps={session.fps}
+          latencyMs={session.latencyMs}
           socketRef={session.socketRef}
           onDisconnect={session.disconnect}
         />

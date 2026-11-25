@@ -10,6 +10,8 @@ import {
   ShrinkIcon,
 } from "./icons";
 
+type QualityPreset = "LOW" | "MEDIUM" | "HIGH";
+
 // Distância (px) que um toque precisa percorrer para virar arrasto, e não clique.
 const TAP_SLOP = 10;
 
@@ -17,10 +19,13 @@ interface RemoteScreenProps {
   computerName: string;
   status: ConnectionStatus;
   statusMessage: string;
-  screenImageUrl: string | null;
+  hasFrame: boolean;
+  canvasRef: RefObject<HTMLCanvasElement | null>;
   remoteSessionId: string | null;
   remoteScreenWidth: number | null;
   remoteScreenHeight: number | null;
+  fps: number;
+  latencyMs: number | null;
   socketRef: RefObject<WebSocket | null>;
   onDisconnect: () => void;
 }
@@ -47,7 +52,7 @@ function clamp01(value: number): number {
 // A imagem usa object-fit: contain; por isso descontamos as faixas vazias
 // (letterbox) que aparecem quando a proporção da janela difere da remota.
 function toRemoteCoords(
-  event: ReactPointerEvent<HTMLImageElement>,
+  event: ReactPointerEvent<HTMLCanvasElement>,
   screenWidth: number,
   screenHeight: number
 ): { x: number; y: number } | null {
@@ -77,10 +82,13 @@ export function RemoteScreen({
   computerName,
   status,
   statusMessage,
-  screenImageUrl,
+  hasFrame,
+  canvasRef,
   remoteSessionId,
   remoteScreenWidth,
   remoteScreenHeight,
+  fps,
+  latencyMs,
   socketRef,
   onDisconnect,
 }: RemoteScreenProps) {
@@ -96,6 +104,8 @@ export function RemoteScreen({
   } | null>(null);
   const sessionRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [qualityPreset, setQualityPreset] = useState<QualityPreset>("MEDIUM");
+  const lastSentZoomRef = useRef(1);
 
   const zoom = useZoomPan(sessionRef, remoteScreenWidth, remoteScreenHeight);
 
@@ -104,6 +114,39 @@ export function RemoteScreen({
     !!remoteSessionId &&
     !!remoteScreenWidth &&
     !!remoteScreenHeight;
+
+  // Informa o Agent quando o usuário dá zoom para que ele envie resolução maior.
+  useEffect(() => {
+    if (!canControl || !remoteSessionId) return;
+
+    const targetZoom = zoom.view.scale > 1.25 ? Number(zoom.view.scale.toFixed(2)) : 1;
+    if (Math.abs(targetZoom - lastSentZoomRef.current) < 0.15 && targetZoom !== 1) {
+      return;
+    }
+    if (targetZoom === lastSentZoomRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      lastSentZoomRef.current = targetZoom;
+      socket.send(
+        JSON.stringify({
+          type: "SET_ZOOM",
+          remoteSessionId,
+          zoomScale: targetZoom,
+        })
+      );
+    }, 150);
+
+    return () => window.clearTimeout(timer);
+  }, [zoom.view.scale, canControl, remoteSessionId, socketRef]);
+
+  function handleQualityChange(nextPreset: QualityPreset) {
+    setQualityPreset(nextPreset);
+    send({ type: "SET_QUALITY", preset: nextPreset });
+  }
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -159,7 +202,7 @@ export function RemoteScreen({
     handleLostPointerCapture();
   }
 
-  function handlePointerDown(event: ReactPointerEvent<HTMLImageElement>) {
+  function handlePointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (zoom.handlePointerDown(event, cancelMouseGesture)) return;
     if (!canControl) return;
 
@@ -196,7 +239,7 @@ export function RemoteScreen({
     send({ type: "MOUSE_BUTTON_DOWN", button, x: coords.x, y: coords.y });
   }
 
-  function handlePointerMove(event: ReactPointerEvent<HTMLImageElement>) {
+  function handlePointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (zoom.handlePointerMove(event)) return;
     if (!canControl) return;
 
@@ -238,7 +281,7 @@ export function RemoteScreen({
     send({ type: "MOUSE_MOVE", x: coords.x, y: coords.y });
   }
 
-  function handlePointerUp(event: ReactPointerEvent<HTMLImageElement>) {
+  function handlePointerUp(event: ReactPointerEvent<HTMLCanvasElement>) {
     if (zoom.handlePointerUp(event)) return;
 
     // Toque simples (sem arrasto): vira um clique.
@@ -281,13 +324,11 @@ export function RemoteScreen({
     });
   }
 
-  function handlePointerCancel(event: ReactPointerEvent<HTMLImageElement>) {
+  function handlePointerCancel(event: ReactPointerEvent<HTMLCanvasElement>) {
     zoom.handlePointerUp(event);
     touchPendingRef.current = null;
     handleLostPointerCapture();
   }
-
-  const hasFrame = screenImageUrl !== null;
 
   return (
     <div
@@ -297,28 +338,48 @@ export function RemoteScreen({
       aria-modal="true"
       aria-label={`Sessão remota com ${computerName}`}
     >
+      {/* Mantém o canvas montado desde o início da sessão para que o primeiro
+          keyframe já possa ser pintado assim que chegar pelo WebSocket. */}
+      <canvas
+        ref={canvasRef}
+        className={`session-image ${zoom.panActive ? "session-image-pan" : ""}`}
+        style={{
+          display: hasFrame ? "block" : "none",
+          transform: `translate(${zoom.view.x}px, ${zoom.view.y}px) scale(${zoom.view.scale})`,
+        }}
+        aria-label={`Tela de ${computerName}`}
+        onPointerMove={handlePointerMove}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onLostPointerCapture={handleLostPointerCapture}
+        onPointerCancel={handlePointerCancel}
+        onContextMenu={(event) => event.preventDefault()}
+      />
+
       {hasFrame ? (
         <>
-          <img
-            className={`session-image ${zoom.panActive ? "session-image-pan" : ""}`}
-            style={{
-              transform: `translate(${zoom.view.x}px, ${zoom.view.y}px) scale(${zoom.view.scale})`,
-            }}
-            src={screenImageUrl}
-            alt={`Tela de ${computerName}`}
-            draggable={false}
-            onPointerMove={handlePointerMove}
-            onPointerDown={handlePointerDown}
-            onPointerUp={handlePointerUp}
-            onLostPointerCapture={handleLostPointerCapture}
-            onPointerCancel={handlePointerCancel}
-            onContextMenu={(event) => event.preventDefault()}
-          />
-
           <div className="session-toolbar">
             <span className="badge-dot dot-online" />
             <span className="toolbar-name">{computerName}</span>
             <span className="toolbar-status">Conectado</span>
+
+            {/* Métrica de desenvolvimento: ajuda a comparar antes/depois de
+                otimizar a captura e a transmissão de tela (issue de FPS). */}
+            <span className="toolbar-metrics" title="Quadros por segundo e latência de ponta a ponta">
+              {fps} FPS · {latencyMs ?? "–"} ms
+            </span>
+
+            <select
+              className="toolbar-select"
+              value={qualityPreset}
+              onChange={(event) => handleQualityChange(event.target.value as QualityPreset)}
+              aria-label="Qualidade da imagem"
+              title="Qualidade da imagem (Baixa, Média, Alta)"
+            >
+              <option value="LOW">Baixa</option>
+              <option value="MEDIUM">Média</option>
+              <option value="HIGH">Alta</option>
+            </select>
 
             <div className="zoom-group" role="group" aria-label="Zoom">
               <button

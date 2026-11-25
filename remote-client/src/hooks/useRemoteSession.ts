@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { API_BASE, expireSession, getValidAccessToken } from "../api/http";
+import { paintTilesToCanvas, parseTileFrame } from "../utils/tileFrame";
+
+// Janela usada para calcular o FPS exibido ao vivo.
+const FPS_WINDOW_MS = 1000;
 
 export type ConnectionStatus =
   | "disconnected"
@@ -36,9 +40,15 @@ export interface RemoteSessionState {
   status: ConnectionStatus;
   statusMessage: string;
   remoteSessionId: string | null;
-  screenImageUrl: string | null;
+  hasFrame: boolean;
+  canvasRef: RefObject<HTMLCanvasElement | null>;
   remoteScreenWidth: number | null;
   remoteScreenHeight: number | null;
+  // Quadros recebidos no último segundo e latência do último quadro
+  // (tempo entre a captura no Agent e a chegada aqui). `null` enquanto
+  // nenhum quadro com cabeçalho de timestamp chegou ainda.
+  fps: number;
+  latencyMs: number | null;
   socketRef: RefObject<WebSocket | null>;
   connect: (computerId: string) => Promise<void>;
   disconnect: () => void;
@@ -48,15 +58,22 @@ export function useRemoteSession(): RemoteSessionState {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [statusMessage, setStatusMessage] = useState("");
   const [remoteSessionId, setRemoteSessionId] = useState<string | null>(null);
-  const [screenImageUrl, setScreenImageUrl] = useState<string | null>(null);
+  const [hasFrame, setHasFrame] = useState(false);
   const [remoteScreenWidth, setRemoteScreenWidth] = useState<number | null>(
     null
   );
   const [remoteScreenHeight, setRemoteScreenHeight] = useState<number | null>(
     null
   );
+  const [fps, setFps] = useState(0);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
-  const imageUrlRef = useRef<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Serializa a pintura de frames para que um frame mais rápido não
+  // sobrescreva outro que ainda está decodificando tiles.
+  const paintQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // Instante (Date.now) de cada quadro recebido no último segundo.
+  const frameTimestampsRef = useRef<number[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   // Cada conexão ganha um número; se outra começar (ou o usuário cancelar)
   // enquanto esta espera o token, ela é descartada.
@@ -73,17 +90,22 @@ export function useRemoteSession(): RemoteSessionState {
     }
   }
 
-  // Libera o último frame e limpa os dados da sessão anterior.
+  // Limpa o canvas e os dados da sessão anterior.
   function resetSession() {
-    if (imageUrlRef.current) {
-      URL.revokeObjectURL(imageUrlRef.current);
-      imageUrlRef.current = null;
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
     }
 
-    setScreenImageUrl(null);
+    paintQueueRef.current = Promise.resolve();
+    setHasFrame(false);
     setRemoteSessionId(null);
     setRemoteScreenWidth(null);
     setRemoteScreenHeight(null);
+    setFps(0);
+    setLatencyMs(null);
+    frameTimestampsRef.current = [];
   }
 
   async function connect(computerId: string) {
@@ -146,22 +168,45 @@ export function useRemoteSession(): RemoteSessionState {
     socket.onmessage = (event: MessageEvent) => {
       if (socketRef.current !== socket) return;
 
-      // Mensagem binária: imagem JPEG enviada pelo Agent.
+      // Mensagem binária: quadro de dirty tiles enviado pelo Agent.
       if (typeof event.data !== "string") {
-        const blob =
-          event.data instanceof Blob
-            ? event.data
-            : new Blob([event.data], { type: "image/jpeg" });
+        const buffer =
+          event.data instanceof ArrayBuffer ? event.data : null;
+        if (!buffer) return;
 
-        const imageUrl = URL.createObjectURL(blob);
+        const frame = parseTileFrame(buffer);
+        if (!frame) return;
 
-        // Libera o frame anterior para evitar acumular imagens na memória.
-        if (imageUrlRef.current) {
-          URL.revokeObjectURL(imageUrlRef.current);
+        paintQueueRef.current = paintQueueRef.current
+          .then(async () => {
+            if (socketRef.current !== socket) return;
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+
+            await paintTilesToCanvas(canvas, ctx, frame);
+            if (socketRef.current === socket) {
+              setHasFrame(true);
+            }
+          })
+          .catch((err) => {
+            console.error("Erro ao pintar tiles no canvas:", err);
+          });
+
+        // Math.max(0, ...) porque o relógio do Agent e o do navegador não são
+        // o mesmo: uma pequena diferença de ajuste entre eles pode dar um
+        // número negativo, que não existe como latência.
+        const now = Date.now();
+        setLatencyMs(Math.max(0, now - frame.captureTimestamp));
+
+        const timestamps = frameTimestampsRef.current;
+        timestamps.push(now);
+        const cutoff = now - FPS_WINDOW_MS;
+        while (timestamps.length > 0 && timestamps[0] < cutoff) {
+          timestamps.shift();
         }
-
-        imageUrlRef.current = imageUrl;
-        setScreenImageUrl(imageUrl);
+        setFps(timestamps.length);
 
         return;
       }
@@ -263,11 +308,6 @@ export function useRemoteSession(): RemoteSessionState {
       if (socket && socket.readyState < WebSocket.CLOSING) {
         socket.close(1000, "Component unmounted");
       }
-
-      if (imageUrlRef.current) {
-        URL.revokeObjectURL(imageUrlRef.current);
-        imageUrlRef.current = null;
-      }
     };
   }, []);
 
@@ -275,9 +315,12 @@ export function useRemoteSession(): RemoteSessionState {
     status,
     statusMessage,
     remoteSessionId,
-    screenImageUrl,
+    hasFrame,
+    canvasRef,
     remoteScreenWidth,
     remoteScreenHeight,
+    fps,
+    latencyMs,
     socketRef,
     connect,
     disconnect,

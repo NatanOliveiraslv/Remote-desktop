@@ -1,11 +1,11 @@
 package com.br.remote_agent.control;
 
 import java.awt.AWTException;
-import java.awt.Dimension;
+import java.awt.GraphicsConfiguration;
 import java.awt.GraphicsEnvironment;
 import java.awt.Rectangle;
 import java.awt.Robot;
-import java.awt.Toolkit;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -32,21 +32,50 @@ public final class RemoteDesktopController {
         this.robot.setAutoDelay(5);
     }
 
+    /** Returns the underlying Robot for use by the capture engine. */
+    public Robot getRobot() {
+        return robot;
+    }
+
     /**
-     * Moves the local mouse when coordinates are within the primary screen bounds.
+     * Returns the primary screen bounds in logical coordinates (DIPs),
+     * matching the coordinate space expected by {@link Robot#mouseMove(int, int)}
+     * even when Windows HiDPI display scaling (e.g. 125%, 150%) is active.
+     */
+    public Rectangle getPrimaryScreenBounds() {
+        GraphicsConfiguration gc = GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice()
+                .getDefaultConfiguration();
+        return gc.getBounds();
+    }
+
+    /**
+     * Returns the HiDPI scale factor of the primary monitor (e.g. 1.25 for 125%).
+     */
+    public double getPrimaryScreenScale() {
+        GraphicsConfiguration gc = GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getDefaultScreenDevice()
+                .getDefaultConfiguration();
+        AffineTransform tx = gc.getDefaultTransform();
+        return tx != null ? tx.getScaleX() : 1.0;
+    }
+
+    /**
+     * Moves the local mouse when coordinates are within the primary screen logical bounds.
      */
     public boolean moveMouse(int x, int y) {
-        Dimension size = Toolkit.getDefaultToolkit().getScreenSize();
+        Rectangle bounds = getPrimaryScreenBounds();
 
-        if (x < 0 || y < 0 || x >= size.width || y >= size.height) {
+        if (x < 0 || y < 0 || x >= bounds.width || y >= bounds.height) {
             System.out.printf(
-                    "Ignoring mouse coordinates outside primary screen: x=%d, y=%d (screen %dx%d)%n",
-                    x, y, size.width, size.height);
+                    "Ignoring mouse coordinates outside primary screen: x=%d, y=%d (logical %dx%d)%n",
+                    x, y, bounds.width, bounds.height);
             return false;
         }
 
-        robot.mouseMove(x, y);
-        System.out.printf("Mouse moved to x=%d, y=%d%n", x, y);
+        robot.mouseMove(bounds.x + x, bounds.y + y);
         return true;
     }
 
@@ -79,9 +108,14 @@ public final class RemoteDesktopController {
             throw new IllegalArgumentException("quality must be between 0.1 and 1.0");
         }
 
-        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
-        BufferedImage screenshot = robot.createScreenCapture(
-                new Rectangle(0, 0, screenSize.width, screenSize.height));
+        // DIAGNÓSTICO TEMPORÁRIO (issue #3): descobrir qual etapa está lenta.
+        // Remover depois de identificar o gargalo.
+        long diagT0 = System.currentTimeMillis();
+
+        Rectangle bounds = getPrimaryScreenBounds();
+        BufferedImage screenshot = robot.createScreenCapture(bounds);
+
+        long diagT1 = System.currentTimeMillis();
 
         BufferedImage imageToEncode = screenshot;
         if (screenshot.getWidth() > maxWidth) {
@@ -107,6 +141,8 @@ public final class RemoteDesktopController {
             imageToEncode = resized;
         }
 
+        long diagT2 = System.currentTimeMillis();
+
         Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("jpeg");
         if (!writers.hasNext()) {
             throw new IOException("No JPEG ImageIO writer is available");
@@ -125,7 +161,16 @@ public final class RemoteDesktopController {
 
             writer.write(null, new IIOImage(imageToEncode, null, null), parameters);
             imageOutput.flush();
-            return output.toByteArray();
+            byte[] jpeg = output.toByteArray();
+
+            long diagT3 = System.currentTimeMillis();
+            System.out.printf(
+                    "Screen capture stages: screen=%dx%d -> %dx%d, capture=%dms, resize=%dms, encode=%dms, total=%dms%n",
+                    screenshot.getWidth(), screenshot.getHeight(),
+                    imageToEncode.getWidth(), imageToEncode.getHeight(),
+                    diagT1 - diagT0, diagT2 - diagT1, diagT3 - diagT2, diagT3 - diagT0);
+
+            return jpeg;
         } finally {
             writer.dispose();
         }

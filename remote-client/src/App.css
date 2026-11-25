@@ -547,6 +547,21 @@
   background: #000;
 }
 
+.toolbar-select {
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.toolbar-select option {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
 .session-image {
   width: 100%;
   height: 100%;
